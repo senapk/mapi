@@ -99,7 +99,7 @@ class MoodleAPI(object):
 
         soup = BeautifulSoup(self.browser.response().read(), 'html.parser')
         topics = soup.find('ul', {'class:', 'topics'})
-        print(topics)
+        # print(topics)
         childrens = topics.contents
 
         for section in childrens:
@@ -140,6 +140,55 @@ class MoodleAPI(object):
         except:
             return obj.__dict__
 
+# Carrega o json
+class JsonTarget: 
+    class EFile:
+        def __init__(self, name, contents):
+            self.name = name
+            self.contents = contents
+
+    class Question:
+        def __init__(self, title, description, tests):
+            self.title = title
+            self.description = description
+            self.executionFiles = []
+            self.requiredFile = None
+            self.executionFiles.append(JsonTarget.EFile("evaluation.cases", tests))
+
+    #receive a folder and retorn the json string
+    @staticmethod 
+    def _load_folder(folder):
+        title = ""
+        description = ""
+        tests = ""
+        with open(folder + os.sep + "Readme.md") as f:
+            title = f.read().split("\n")[0]
+            words = title.split(" ")
+            if words[0].count("#") == len(words[0]): #only #
+                del words[0]
+            title = "@" + folder + " " + " ".join(words)
+        with open(folder + os.sep + "t.html") as f:
+            description = f.read()
+        with open(folder + os.sep + "t.vpl") as f:
+            tests = f.read()
+        question = JsonTarget.Question(title, description, tests)
+        s = json.dumps(question, default=lambda o: o.__dict__, indent=4)
+        return s
+
+    @staticmethod
+    def load(target):
+        data = ""
+        if os.path.isfile(target):
+            with open(target, encoding='utf-8') as f:
+                data = json.load(f)
+        elif os.path.isdir(target):
+            data = json.loads(JsonTarget._load_folder(target))
+        else:
+            print("fail: target invalido " + target)
+            exit(1)
+        return data
+
+
 class VPL(object):
     def __init__(self, name = "", shortdescription = "", description = "", tests = "", executionFiles = []):
         self.id = ""
@@ -153,16 +202,15 @@ class VPL(object):
         if os.path.isfile(path + ".json"):
             path = path + ".json"
 
-        with open(path, encoding='utf-8') as f:
-            data = json.load(f)
-            self.name = data["title"]
-            self.description = data["description"]
-            self.executionFiles = data["executionFiles"]
+        data = JsonTarget.load(path)
+        self.name = data["title"]
+        self.description = data["description"]
+        self.executionFiles = data["executionFiles"]
 
-            for entry in self.executionFiles:
-                entry['encoding'] = 0
-            if data["requiredFile"] != None:
-                self.requiredFile = data["requiredFile"]
+        for entry in self.executionFiles:
+            entry['encoding'] = 0
+        if data["requiredFile"] != None:
+            self.requiredFile = data["requiredFile"]
         return self
 
     def __str__(self):
@@ -190,6 +238,8 @@ def loadConfig():
     if config["password"] is None:
         config["password"] = getpass.getpass()
     return config
+
+
 
 def main_add(args):
     api = MoodleAPI(loadConfig(), args.section)
