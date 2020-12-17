@@ -15,8 +15,6 @@ import pathlib
 
 class MoodleAPI(object):
     def __init__(self, configData, section):
-        urlBase = configData["url"]
-        #self.files = files #lista dos paths dos arquivos
         self.username = configData["username"] #puxa do config
         self.password = configData["password"]
         self.course = configData["course"] #id do curso (344)
@@ -51,10 +49,10 @@ class MoodleAPI(object):
 
     def update(self, vpl):
         print("Atualizando a questão %s" % (vpl.name))
-
+        
         self.submitVpl(self.urlUpdateVpl.replace("ID_QUESTAO", vpl.id), vpl)
 
-        print("Questão atualizada com sucesso!!")    
+        print("Questão atualizada com sucesso!!")
 
     def submitVpl(self, url, vpl):
         self.browser.open(url)
@@ -75,6 +73,7 @@ class MoodleAPI(object):
 
         print("Enviando os arquivos de execuções...")
 
+        #todo: fazer isso funcionar mesmo quando não houver indice
         if(not vpl.id):
             vpl.id = self.getVplId(vpl.name)
 
@@ -116,7 +115,11 @@ class MoodleAPI(object):
                 text = activity.get_text().replace(' Laboratório Virtual de Programação', '')
                 print('    - %s: [%s](%s)' %(id_activity, text, activity['href']))
 
-    def getVplId(self, name):
+    def getVplId(self, title):
+        index = title.split(" ")[0]
+        if index[0] != '@':
+            return -1
+
         self.browser.open(self.urlCourse)
         self.login()
         for l in self.browser.links():
@@ -125,9 +128,9 @@ class MoodleAPI(object):
                 qid = l.url.replace(self.urlBase + "/mod/vpl/view.php?id=" , "")
                 if ord(text[0]) == 65279:
                     text = text[1:]
-                qindex = text.split(" ")[0]                
+                qindex = text.split(" ")[0]
                 if qindex.startswith("@"):
-                    if qindex == name.split(" ")[0]:
+                    if qindex == index:
                         return qid
         return -1
 
@@ -177,7 +180,8 @@ def loadConfig():
             config = json.load(f)
     except FileNotFoundError as e:
         print("Crie um arquivo .mapirc no seu diretório de usuário")
-    if config["password"] == None:
+
+    if config["password"] is None:
         config["password"] = getpass.getpass()
     return config
 
@@ -186,12 +190,26 @@ def main_add(args):
     for file in args.questoes:
         vpl = VPL().load(file)
         print(vpl.name)
-        if api.getVplId(vpl.name) == -1:
+        qid = api.getVplId(vpl.name)
+        if qid == -1:
+            print("Adicionando nova questão")
             api.addVpl(vpl)
         else:
-            qid = api.getVplId(vpl.name)
             vpl.id = qid
             print("Atualizando questao", qid)
+            api.update(vpl)
+
+def main_update(args):
+    api = MoodleAPI(loadConfig(), '')
+    for file in args.questoes:
+        vpl = VPL().load(file)
+        print(vpl.name)
+        qid = api.getVplId(vpl.name)
+        if qid == -1:
+            print("index not found on moodle, skipping")
+        else:
+            vpl.id = qid
+            print("index found on ", qid)
             api.update(vpl)
 
 def main_list(args):
@@ -224,6 +242,11 @@ def main():
     parser_add.add_argument('questoes', type=str, nargs='+', action='store', help='Pacote de questões')
     parser_add.add_argument('-s', '--section', metavar='COD_SECTION', default='0', type=str, action='store', help="Código da seção onde a questão será inserida")
     parser_add.set_defaults(func=main_add)
+
+
+    parser_update = subparsers.add_parser('update', help=desc_add)
+    parser_update.add_argument('questoes', type=str, nargs='+', action='store', help='Pacote de questões')
+    parser_update.set_defaults(func=main_update)
 
     parser_list = subparsers.add_parser('list', help='Lista todas as questões cadastradas no curso e seus respectivos ids')
     parser_list.set_defaults(func=main_list)
