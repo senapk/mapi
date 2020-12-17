@@ -175,11 +175,17 @@ class VPL(object):
 
 def loadConfig():
     config = {} # ["username"] ["url"] ["course"] ["password"]
+    home_mapirc = str(pathlib.Path.home()) + os.sep + '.mapirc'
+    if not os.path.isfile(home_mapirc):
+        print("Conforme instruções do Readme, crie o arquivo " + home_mapirc)
+        exit(1)
+
     try:
-        with open(str(pathlib.Path.home()) + os.sep + '.mapirc') as f:
+        with open(home_mapirc) as f:
             config = json.load(f)
-    except FileNotFoundError as e:
-        print("Crie um arquivo .mapirc no seu diretório de usuário")
+    except:
+        print("Conforme instruções do Readme, crie o arquivo " + home_mapirc)
+        exit(1)
 
     if config["password"] is None:
         config["password"] = getpass.getpass()
