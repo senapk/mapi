@@ -39,20 +39,43 @@ class MoodleAPI(object):
             print(self.browser.title())
         except mechanize.FormNotFoundError as e:
             pass
-        
+    
     def addVpl(self, vpl):
+        ''' Chamado pelo add '''
         print("Enviando a questão %s para a seção %s" %(vpl.name, self.section))
         
         self.submitVpl(self.urlNewVpl, vpl)
 
         print("Questão adicionada com sucesso!!")
 
+
     def update(self, vpl):
-        print("Atualizando a questão %s" % (vpl.name))
+        ''' Chamado pelo update '''
+        print("Atualizando a questão %s na seção %s" % (vpl.name, self.section))
         
         self.submitVpl(self.urlUpdateVpl.replace("ID_QUESTAO", vpl.id), vpl)
 
         print("Questão atualizada com sucesso!!")
+
+
+    def getVpl(self, url):
+        self.browser.open(url)
+        self.login()
+
+        try:
+            self.browser.select_form(action='modedit.php')
+        except mechanize.FormNotFoundError as e:
+            print("erro no login")
+            exit(1)
+            
+        print(self.browser.title())
+
+        # TODO: receber os arquivos do VPL online
+        return VPL(
+            name=self.browser['name'],
+            description=self.browser['introeditor[text]'],
+            
+        )
 
     def submitVpl(self, url, vpl):
         self.browser.open(url)
@@ -72,8 +95,15 @@ class MoodleAPI(object):
         self.browser.submit()
 
         print("Enviando os arquivos de execuções...")
+        # print("ID=",vpl.id)
+        # print(vpl)
 
-        #todo: fazer isso funcionar mesmo quando não houver indice
+        if(not vpl.id):
+            qStions = self.listByQuestions()
+            qbTitle = MoodleAPI.getQByTitle(vpl.name) # @123
+            if (str(qbTitle) in qStions) and (str(self.section) in qStions[str(qbTitle)].keys()):
+                vpl.id = qStions[str(qbTitle)][str(self.section)]
+
         if(not vpl.id):
             vpl.id = self.getVplId(vpl.name)
 
@@ -114,6 +144,50 @@ class MoodleAPI(object):
                 id_activity = activity['href'].replace(self.urlBase + '/mod/vpl/view.php?id=', '')
                 text = activity.get_text().replace(' Laboratório Virtual de Programação', '')
                 print('    - %s: [%s](%s)' %(id_activity, text, activity['href']))
+
+
+    def listByQuestions(self):
+        ''' { 'ID_QUESTAO' : { 'TOPICO': 'VPL', ... }, ... }\n
+        ID_QUESTAO -> ID questão do GitHub;\n
+        TOPICO -> ID do tópico;\n
+        VPL -> ID da VPL para modificação.'''
+        self.browser.open(self.urlCourse)
+        self.login()
+
+        soup = BeautifulSoup(self.browser.response().read(), 'html.parser')
+        topics = soup.find('ul', {'class:', 'topics'})
+        # print(topics)
+        childrens = topics.contents
+        struc = {}
+
+        for section in childrens:
+            id_section = section['id']
+            desc_section = section['aria-label']
+            # print('- %s: %s' % (id_section.replace('section-', ''), desc_section))
+
+            activities = soup.select('#' + id_section + ' > div.content > ul > li > div > div.mod-indent-outer > div > div.activityinstance > a')
+            for activity in activities:
+                if not activity['href'].startswith(self.urlBase + '/mod/vpl/view.php?id='):
+                    continue
+                id_activity = activity['href'].replace(self.urlBase + '/mod/vpl/view.php?id=', '')
+                text = activity.get_text().replace(' Laboratório Virtual de Programação', '')
+                vplId = MoodleAPI.getQByTitle(text)
+                # print("?",text,"| ID=",vplId)
+                if str(id_activity).isnumeric() and vplId != -1:
+                    if not str(vplId) in struc:
+                        struc[str(vplId)] = {}
+                    # print('struc[%s][%s]=%s' %(vplId, id_section.replace('section-', ''), id_activity))
+                    struc[str(vplId)][str(id_section.replace('section-', ''))] = id_activity
+        return struc
+
+    @staticmethod
+    def getQByTitle(title):
+        ''' "@123 ABCDE..." -> 123 '''
+        ttlSplt = title.split(" ")
+        for ttl in ttlSplt:
+            if ttl[0] == '@' and str(ttl[1:]).isnumeric():
+                return int(ttl[1:])
+        return -1
 
     def getVplId(self, title):
         index = title.split(" ")[0]
@@ -246,7 +320,15 @@ def main_add(args):
     for file in args.questoes:
         vpl = VPL().load(file)
         print(vpl.name)
-        qid = api.getVplId(vpl.name)
+
+        qid = -1
+        qStions = api.listByQuestions()
+        qbTitle = MoodleAPI.getQByTitle(vpl.name) # @123
+
+        if (str(qbTitle) in qStions) and (str(args.section) in qStions[str(qbTitle)].keys()):
+            qid = qStions[str(qbTitle)][str(args.section)]
+
+        # qid = api.getVplId(vpl.name)
         if qid == -1:
             print("Adicionando nova questão")
             api.addVpl(vpl)
@@ -256,7 +338,7 @@ def main_add(args):
             api.update(vpl)
 
 def main_update(args):
-    api = MoodleAPI(loadConfig(), '')
+    api = MoodleAPI(loadConfig(), args.section)
     for file in args.questoes:
         vpl = VPL().load(file)
         print(vpl.name)
