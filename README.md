@@ -1,6 +1,6 @@
 
 ## MoodleAPI
-Api de publicação automática de vpl's no moodle
+API de publicação automática de VPL's no Moodle/Moodle2
 
 É necessário primeiro baixar a biblioteca [Mechanize](https://github.com/python-mechanize/mechanize)
 
@@ -11,7 +11,7 @@ E tambem a biblioteca [Beautifulsoup4](https://pypi.org/project/beautifulsoup4/)
 	pip install beautifulsoup4
 
 ## Configurações do ambiente
-Crie um arquivo .mapirc no seu diretório de usuário com:
+Crie um arquivo `.mapirc` no seu diretório de usuário (`~`) com o formato:
 ```
 {
     "username": "seu_login",
@@ -28,7 +28,7 @@ Exemplo:
     "username": "jiraya",
     "password": "espadaOlimpica123",
     "course": "516",
-    "url": "https://moodle.quixada.ufc.br"
+    "url": "https://moodle2.quixada.ufc.br"
 }
 ```
 
@@ -38,11 +38,11 @@ senha=sua_senha
 ```
 
 ## Configurando o Moodle
-- Modificar o editor padrão do moodle para *Área de texto simples* **(Meu Perfi > Modificar Perfil > Preferências > editor de texto)**
-
+- Modificar o editor padrão do moodle para *Área de texto simples* **(Meu Perfil > Modificar Perfil > Preferências > editor de texto)**
+Obs.: Já compatível com Moodle2.
 
 ## Modelo de questões
-O caminho do arquivo que contém as questões a serem publicadas no moodle.
+O caminho do arquivo que contém as questões a serem publicadas no Moodle.
 
 ```json
 {
@@ -67,9 +67,13 @@ O caminho do arquivo que contém as questões a serem publicadas no moodle.
 
 Se não houver arquivo requerido, ponha `"requiredFile" = null`.
 
-## Utilizando
-
-Uma vez configurado, basta executar o arquivo mapi.py
+## Exemplos e utilização
+| Operação | Parâmetros |
+| --- | --- |
+| ./mapi.py add questao [q2.json] [...] [-s 0] | `-s` Seção de destino |
+| ./mapi.py update questao [q2.json] [...] [-s 0] [-f, --force] | `-s` Seção de destino. <br/>`-f` Atualiza mesmo sem modificações aparentes. |
+| ./mapi.py push questao [q2.json] [...] [-s 0] [-f, --force] | `-s` Seção de destino.<br/>`-f` Envia e atualiza mesmo sem modificações aparentes. |
+| ./mapi.py list | Lista todas as questões cadastradas no curso e seus respectivos IDs. |
 
 ## Estrutura do diretório que contém uma questão
 - Readme.md

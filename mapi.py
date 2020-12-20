@@ -524,7 +524,7 @@ def main():
     parser_update.set_defaults(force=False)
     parser_update.set_defaults(func=main_update)
 
-    parser_list = subparsers.add_parser('list', help='Lista todas as questões cadastradas no curso e seus respectivos ids')
+    parser_list = subparsers.add_parser('list', help='Lista todas as questões cadastradas no curso e seus respectivos IDs.')
     parser_list.set_defaults(func=main_list)
 
     parser_push = subparsers.add_parser('push', help=desc_push)
