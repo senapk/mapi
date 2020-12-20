@@ -13,6 +13,7 @@ import shutil
 import getpass #get pass
 import pathlib
 import urllib
+import subprocess
 
 class MoodleAPI(object):
     def __init__(self, configData, section):
@@ -289,12 +290,17 @@ class JsonTarget:
         title = ""
         description = ""
         tests = ""
+
+        idxQuest = folder
+        if os.sep in idxQuest:
+            idxQuest=idxQuest[str(idxQuest).rfind(os.sep)+1:] # ../../001
+            
         with open(folder + os.sep + "Readme.md") as f:
             title = f.read().split("\n")[0]
             words = title.split(" ")
             if words[0].count("#") == len(words[0]): #only #
                 del words[0]
-            title = "@" + folder + " " + " ".join(words)
+            title = "@" + idxQuest + " " + " ".join(words)
         with open(folder + os.sep + "t.html") as f:
             description = f.read()
         with open(folder + os.sep + "t.vpl") as f:
@@ -403,6 +409,17 @@ def loadConfig():
     return config
 
 
+def main_clone(args):
+    dest = "/tmp/mapi"
+    if args.output != "":
+        dest = args.output
+    
+    for id in args.questoes:
+        mqDest = dest+ ("/%d" % id)
+        p = subprocess.Popen("svn export https://github.com/qxcodefup/moodle/trunk/base/%d %s | grep \"Exportada\" | awk '{print $2}'" % (id, mqDest), stdout=subprocess.PIPE, shell=True)
+        (output, err) = p.communicate()
+        print("Rev. ", output)
+        print("Salvo em: %s" % mqDest)
 
 def main_add(args):
     api = MoodleAPI(loadConfig(), args.section)
@@ -490,20 +507,22 @@ def main_push(args):
 
 def main_rm(args):
     api = MoodleAPI(loadConfig(), args.section)
-    for file in args.questoes:
-        vpl = VPL().load(file)
+    for id in args.questoes:
 
         qid = -1
         qStions = api.listByQuestions()
-        qbTitle = MoodleAPI.getQByTitle(vpl.name) # @123
+        print(qStions)
 
-        if (str(qbTitle) in qStions) and (str(args.section) in qStions[str(qbTitle)].keys()):
-            qid = qStions[str(qbTitle)][str(args.section)]
-            
+        if (str(id) in qStions) and (str(args.section) in qStions[str(id)].keys()):
+            qid = qStions[str(id)][str(args.section)]
+
         if qid != -1:
-            vpl.id = qid
-            print("Removendo", vpl.name)
-            api.delete(vpl)
+            print("Removendo @%s" % qid)
+            vTmp = VPL()
+            vTmp.id = qid
+            api.delete(vTmp)
+        else:
+            print("\"%s\" não encontrado." % id)
 
 
 def main_list(args):
@@ -568,10 +587,23 @@ def main():
     parser_push.set_defaults(force=False)
     parser_push.set_defaults(func=main_push)
 
-    parser_rm = subparsers.add_parser('rm', help=desc_push)
-    parser_rm.add_argument('questoes', type=str, nargs='+', action='store', help='Lista de questões')
+    # Possíveis novas features:
+    # rm (remover)
+    # ex.: ./mapi.py rm 188 -s 0
+    parser_rm = subparsers.add_parser('rm', help="Apagar do Moodle")
+    parser_rm.add_argument('questoes', type=str, nargs='+', action='store', help='Indices das questões')
     parser_rm.add_argument('-s', '--section', metavar='COD_SECTION', default='0', type=str, action='store', help="Código da seção de destino")
     parser_rm.set_defaults(func=main_rm)
+
+    # clone direto do repositório
+    # ex.: ./mapi.py clone 188 -o ../tmp/
+    # adicionar com: ./mapi.py push ../tmp/188
+    parser_clone = subparsers.add_parser('clone', help="Clonar questões do repositório")
+    parser_clone.add_argument('questoes', type=int, nargs='+', action='store', help='Index das questões a baixar')
+    parser_clone.add_argument('-o', '--output', type=str, default='', action='store', help='Pasta de destino')
+    parser_clone.set_defaults(func=main_clone)
+
+    
 
     # DEBUG: Ver dados do VPL baixado
     # parser_down = subparsers.add_parser('down', help='DEBUG: Download de vpl.')
