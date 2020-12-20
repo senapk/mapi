@@ -22,6 +22,7 @@ class MoodleAPI(object):
         self.urlBase = configData["url"] # https://moodle.quixada.ufc.br
         self.urlCourse = self.urlBase + "/course/view.php?id=" + self.course
         self.urlNewVpl = self.urlBase + "/course/modedit.php?add=vpl&type=&course=" + self.course + "&section=" + self.section + "&return=0&sr=0"
+        self.urlViewVpl = self.urlBase + '/mod/vpl/view.php?id=ID_QUESTAO'
         self.urlUpdateVpl = self.urlBase + '/course/modedit.php?update=ID_QUESTAO'
         self.urlNewTest = self.urlBase + "/mod/vpl/forms/testcasesfile.php?id=ID_QUESTAO&edit=3" #troca ID_QUESTAO na hora do insert
         self.urlTestSave = self.urlBase + "/mod/vpl/forms/testcasesfile.json.php?id=ID_QUESTAO&action=save" #para fazer o download do teste
@@ -36,7 +37,7 @@ class MoodleAPI(object):
             self.browser['username'] = self.username
             self.browser['password'] = self.password
             self.browser.submit()
-            print(self.browser.title())
+            print("[AFL]",self.browser.title())
         except mechanize.FormNotFoundError as e:
             pass
     
@@ -58,24 +59,56 @@ class MoodleAPI(object):
         print("Questão atualizada com sucesso!!")
 
 
-    def getVpl(self, url):
+    def downloadVpl(self, url):
+        # print("<=",url)
         self.browser.open(url)
         self.login()
 
-        try:
-            self.browser.select_form(action='modedit.php')
-        except mechanize.FormNotFoundError as e:
-            print("erro no login")
-            exit(1)
-            
-        print(self.browser.title())
+        arquivos = {}
+
+        soup = BeautifulSoup(self.browser.response().read(), 'html.parser')
+
+        arqs = soup.findAll('h4', {'id': lambda value: value and value.startswith("fileid")})
+        titulo = soup.find('a', {'href': self.browser.geturl()}).get_text()
+        descricao = soup.find('div', {'class': 'box py-3 generalbox'}).find('div',{'class':'no-overflow'}).get_text()
+        required = None
+
+        for arq in arqs:
+            cont = soup.find('pre', {'id': 'code'+arq.get('id') })
+            if arq.find_previous_sibling('h2').get_text() == "Arquivos requeridos":
+                required = { 'name':arq.get_text(), 'contents':str(cont.get_text())}
+            else:
+                arquivos[arq.get_text()] = str(cont.get_text())
+            # print('->',arq.get_text())
+            # print('==',cont.get_text())
+        # print(titulo)
+        # print(descricao)
+        # print("required",required)
+        # print("arquivos",arquivos)
 
         # TODO: receber os arquivos do VPL online
-        return VPL(
-            name=self.browser['name'],
-            description=self.browser['introeditor[text]'],
-            
-        )
+        V = VPL( name=titulo, description=descricao )
+        for arq in arquivos.keys():
+            V.executionFiles.append({
+                'name': arq,
+                'contents': arquivos[arq],
+                'encoding':0,
+            })
+        if required:
+            V.requiredFile = required
+        return V
+
+    def getVpl(self, qId):
+        # print("BUSCANDO QID:",qId)
+        vplId = -1
+        qStions = self.listByQuestions()
+
+        if (str(qId) in qStions) and (str(self.section) in qStions[str(qId)].keys()):
+            vplId = qStions[str(qId)][str(self.section)]
+        if vplId != -1:
+            return self.downloadVpl(self.urlViewVpl.replace("ID_QUESTAO", vplId))
+        return None
+
 
     def submitVpl(self, url, vpl):
         self.browser.open(url)
@@ -295,6 +328,41 @@ class VPL(object):
             out += "----" + self.requiredFile["name"] + "\n" + self.requiredFile["contents"]
         return out
 
+    def __eq__(self, value):
+        resposta = value.name == self.name
+        # print("NAME:","OK" if resposta else "FAIL")
+
+        valueParsedDescrp = BeautifulSoup(value.description, 'html.parser')
+        parsedDescrp = BeautifulSoup(self.description, 'html.parser')
+        resposta = resposta and (parsedDescrp.get_text() == valueParsedDescrp.get_text())
+
+        # print("DESCRIPT:","OK" if resposta else "FAIL")
+
+        
+        for arq in self.executionFiles:
+            parsedF = BeautifulSoup(arq["contents"], 'html.parser') # Converte HTML para formato BeautifulSoup
+            for searchFile in value.executionFiles: # Itera do segundo VPL
+                if searchFile["name"] == arq["name"]: # Encontrado
+                    searchFileContentsParsed = BeautifulSoup(searchFile["contents"], 'html.parser').get_text()
+                    resposta = resposta and (parsedF.get_text() == searchFileContentsParsed) # Igualdade de conteúdo
+        # print("F_CONTENTS:","OK" if resposta else "FAIL")
+        
+        if self.requiredFile != None or value.requiredFile != None:
+            if self.requiredFile != None and value.requiredFile != None:
+                resposta = resposta and (self.requiredFile["name"] == value.requiredFile["name"]) # Mesmo nome
+            
+            selfReqCont = None
+            valueReqCont = None
+            if self.requiredFile != None:
+                selfReqCont = BeautifulSoup(self.requiredFile["contents"], 'html.parser').get_text()
+            if value.requiredFile != None:
+                valueReqCont = BeautifulSoup(value.requiredFile["contents"], 'html.parser').get_text()
+            resposta = resposta and (selfReqCont == valueReqCont)
+        # print("REQUIREDFILE:","OK" if resposta else "FAIL")
+
+        return resposta
+
+
 def loadConfig():
     config = {} # ["username"] ["url"] ["course"] ["password"]
     home_mapirc = str(pathlib.Path.home()) + os.sep + '.mapirc'
@@ -336,6 +404,35 @@ def main_add(args):
             vpl.id = qid
             print("Atualizando questao", qid)
             api.update(vpl)
+
+
+
+def main_down(args):
+    api = MoodleAPI(loadConfig(), args.section)
+    if args.qid != -1:
+        vpl = api.getVpl(args.qid) 
+        print(vpl)
+
+def main_compare(args):
+    api = MoodleAPI(loadConfig(), args.section)
+    for file in args.questoes:
+        vpl = VPL().load(file)
+        qid = -1
+        qStions = api.listByQuestions()
+        qbTitle = MoodleAPI.getQByTitle(vpl.name) # @123
+
+        vplRetrived = api.getVpl(qbTitle)
+
+        if vplRetrived:
+            # print("DOWN",vplRetrived)
+            # print("JSON",vpl)
+
+            if vplRetrived == vpl:
+                print("IGUAIS")
+            else:
+                print("DIFERENTES")
+        else:
+            print("VPL não contido na seção %s" % args.section )
 
 def main_update(args):
     api = MoodleAPI(loadConfig(), args.section)
@@ -388,6 +485,16 @@ def main():
 
     parser_list = subparsers.add_parser('list', help='Lista todas as questões cadastradas no curso e seus respectivos ids')
     parser_list.set_defaults(func=main_list)
+
+    parser_down = subparsers.add_parser('down', help='DEBUG: Download de vpl.')
+    parser_down.add_argument('qid', type=int, metavar='qId', default='-1', action='store', help='URL da questão')
+    parser_down.add_argument('-s', '--section', metavar='COD_SECTION', default='0', type=str, action='store', help="Código da seção onde a questão será inserida")
+    parser_down.set_defaults(func=main_down)
+
+    parser_compare = subparsers.add_parser('compare', help=desc_add)
+    parser_compare.add_argument('questoes', type=str, nargs='+', action='store', help='Pacote de questões')
+    parser_compare.add_argument('-s', '--section', metavar='COD_SECTION', default='0', type=str, action='store', help="Código da seção onde a questão será inserida")
+    parser_compare.set_defaults(func=main_compare)
 
     args = parser.parse_args()
 
