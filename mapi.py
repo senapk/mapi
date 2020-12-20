@@ -12,6 +12,7 @@ import zipfile
 import shutil
 import getpass #get pass
 import pathlib
+import urllib
 
 class MoodleAPI(object):
     def __init__(self, configData, section):
@@ -21,6 +22,8 @@ class MoodleAPI(object):
         self.section = section #parametro utilizado por exemplo na hora de add o vpl, para escolher onde inserir
         self.urlBase = configData["url"] # https://moodle.quixada.ufc.br
         self.urlCourse = self.urlBase + "/course/view.php?id=" + self.course
+        self.urlDeleteAction = self.urlBase + "/course/mod.php"
+        self.urlDeleteVpl = self.urlDeleteAction + "?sr=0&delete=ID_QUESTAO"
         self.urlNewVpl = self.urlBase + "/course/modedit.php?add=vpl&type=&course=" + self.course + "&section=" + self.section + "&return=0&sr=0"
         self.urlViewVpl = self.urlBase + '/mod/vpl/view.php?id=ID_QUESTAO'
         self.urlUpdateVpl = self.urlBase + '/course/modedit.php?update=ID_QUESTAO'
@@ -57,6 +60,22 @@ class MoodleAPI(object):
         self.submitVpl(self.urlUpdateVpl.replace("ID_QUESTAO", vpl.id), vpl)
 
         print("Questão atualizada com sucesso!!")
+
+    def delete(self, vpl):
+        self.browser.open(self.urlDeleteVpl.replace("ID_QUESTAO", vpl.id))
+        self.login()
+
+        try:
+            self.browser.select_form(action=self.urlDeleteAction)
+        except mechanize.FormNotFoundError as e:
+            print("Erro no login",e)
+            exit(1)
+        
+        self.browser.submit()
+        # params = {u'confirm': "1", u'sesskey':"", u'sr':u'0', u'delete':"11402"}
+        # data = urllib.urlencode(params)
+        # request = mechanize.Request( self.urlDeleteVpl )
+        # response = mechanize.urlopen(request, data=data)
 
 
     def downloadVpl(self, url, vplid):
@@ -402,10 +421,6 @@ def main_add(args):
         if qid == -1:
             print("Adicionando nova questão")
             api.addVpl(vpl)
-        else:
-            vpl.id = qid
-            print("Atualizando questao", qid)
-            api.update(vpl)
 
 
 
@@ -472,6 +487,25 @@ def main_push(args):
             print("Inserindo questão @%d na seção %s." % (qbTitle, args.section))
             api.addVpl(vpl)
 
+
+def main_rm(args):
+    api = MoodleAPI(loadConfig(), args.section)
+    for file in args.questoes:
+        vpl = VPL().load(file)
+
+        qid = -1
+        qStions = api.listByQuestions()
+        qbTitle = MoodleAPI.getQByTitle(vpl.name) # @123
+
+        if (str(qbTitle) in qStions) and (str(args.section) in qStions[str(qbTitle)].keys()):
+            qid = qStions[str(qbTitle)][str(args.section)]
+            
+        if qid != -1:
+            vpl.id = qid
+            print("Removendo", vpl.name)
+            api.delete(vpl)
+
+
 def main_list(args):
     api = MoodleAPI(loadConfig(), "")
     api.listAll()
@@ -533,6 +567,11 @@ def main():
     parser_push.add_argument('-f', '--force', dest='force', action='store_true', help="Força atualização mesmo que não haja mudanças")
     parser_push.set_defaults(force=False)
     parser_push.set_defaults(func=main_push)
+
+    parser_rm = subparsers.add_parser('rm', help=desc_push)
+    parser_rm.add_argument('questoes', type=str, nargs='+', action='store', help='Lista de questões')
+    parser_rm.add_argument('-s', '--section', metavar='COD_SECTION', default='0', type=str, action='store', help="Código da seção de destino")
+    parser_rm.set_defaults(func=main_rm)
 
     # DEBUG: Ver dados do VPL baixado
     # parser_down = subparsers.add_parser('down', help='DEBUG: Download de vpl.')
