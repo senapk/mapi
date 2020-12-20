@@ -39,6 +39,7 @@ senha=sua_senha
 
 ## Configurando o Moodle
 - Modificar o editor padrão do moodle para *Área de texto simples* **(Meu Perfil > Modificar Perfil > Preferências > editor de texto)**
+
 Obs.: Já compatível com Moodle2.
 
 ## Modelo de questões
@@ -70,12 +71,13 @@ Se não houver arquivo requerido, ponha `"requiredFile" = null`.
 ## Exemplos e utilização
 | Operação | Parâmetros |
 | --- | --- |
-| ./mapi.py add questao [q2.json] [...] [-s 0] | `-s` Seção de destino |
-| ./mapi.py update questao [q2.json] [...] [-s 0] [-f, --force] | `-s` Seção de destino. <br/>`-f` Atualiza mesmo sem modificações aparentes. |
-| ./mapi.py push questao [q2.json] [...] [-s 0] [-f, --force] | `-s` Seção de destino.<br/>`-f` Envia e atualiza mesmo sem modificações aparentes. |
+| ./mapi.py add questao.json [q2.json] [...] [-s 0] | `-s` Seção de destino |
+| ./mapi.py update questao.json [q2.json] [...] [-s 0] [-f, --force] | `-s` Seção de destino. <br/>`-f` Atualiza mesmo sem modificações aparentes. |
+| ./mapi.py push questao.json [q2.json] [...] [-s 0] [-f, --force] | `-s` Seção de destino.<br/>`-f` Envia e atualiza mesmo sem modificações aparentes. |
 | ./mapi.py list | Lista todas as questões cadastradas no curso e seus respectivos IDs. |
+Obs¹: Arquivos no formato do [modelo de questões](#modelo-de-questões) ou pastas seguindo as [estruturas de diretório de uma questão](#estruturas-de-diretório-de-uma-questão) são aceitos.
 
-## Estrutura do diretório que contém uma questão
+## Estruturas de diretório de uma questão
 - Readme.md
     - A primeira linha deve ter o título da questão.
     - Se houver um `index`, ele deve ser a primeira palavra e iniciar com @
