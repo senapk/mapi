@@ -59,7 +59,7 @@ class MoodleAPI(object):
         print("Questão atualizada com sucesso!!")
 
 
-    def downloadVpl(self, url):
+    def downloadVpl(self, url, vplid):
         # print("<=",url)
         self.browser.open(url)
         self.login()
@@ -96,6 +96,8 @@ class MoodleAPI(object):
             })
         if required:
             V.requiredFile = required
+
+        V.id = vplid
         return V
 
     def getVpl(self, qId):
@@ -106,7 +108,7 @@ class MoodleAPI(object):
         if (str(qId) in qStions) and (str(self.section) in qStions[str(qId)].keys()):
             vplId = qStions[str(qId)][str(self.section)]
         if vplId != -1:
-            return self.downloadVpl(self.urlViewVpl.replace("ID_QUESTAO", vplId))
+            return self.downloadVpl(self.urlViewVpl.replace("ID_QUESTAO", vplId), vplId)
         return None
 
 
@@ -438,14 +440,18 @@ def main_update(args):
     api = MoodleAPI(loadConfig(), args.section)
     for file in args.questoes:
         vpl = VPL().load(file)
-        print(vpl.name)
-        qid = api.getVplId(vpl.name)
-        if qid == -1:
-            print("index not found on moodle, skipping")
-        else:
-            vpl.id = qid
-            print("index found on ", qid)
-            api.update(vpl)
+        qbTitle = MoodleAPI.getQByTitle(vpl.name) # @123
+        print("Recebendo questão.")
+        vplRetrived = api.getVpl(qbTitle)
+
+        if vplRetrived:
+            if vplRetrived == vpl:
+                print("Não há mudanças a serem feitas.")
+            else:
+                print("Atualizando @%d, seção %s." % (qbTitle, args.section))
+                vpl.id = vplRetrived.id
+                api.update(vpl)
+        
 
 def main_list(args):
     api = MoodleAPI(loadConfig(), "")
@@ -473,28 +479,38 @@ def main():
                 "questão.txt - arquivo ou diretório contendo as questões a serem enviadas (Ex.: https://github.com/brunocarvalho7/moodleAPI \n"
                 )
 
+    desc_update = ("Atualiza questões no moodle \n"
+                "Ex.: ./mapi.py update questao.json [questao2.json, questoes/, ...] [-s X]\n"
+                "atualiza as questões na seção X\n"
+                "-s para definir uma seção (0: padrão)\n"
+                "questao - arquivo ou diretório contendo as questões a serem enviadas (Ex.: https://github.com/brunocarvalho7/moodleAPI \n"
+                )
+
     parser_add = subparsers.add_parser('add', help=desc_add)
     parser_add.add_argument('questoes', type=str, nargs='+', action='store', help='Pacote de questões')
     parser_add.add_argument('-s', '--section', metavar='COD_SECTION', default='0', type=str, action='store', help="Código da seção onde a questão será inserida")
     parser_add.set_defaults(func=main_add)
 
 
-    parser_update = subparsers.add_parser('update', help=desc_add)
+    parser_update = subparsers.add_parser('update', help=desc_update)
     parser_update.add_argument('questoes', type=str, nargs='+', action='store', help='Pacote de questões')
+    parser_update.add_argument('-s', '--section', metavar='COD_SECTION', default='0', type=str, action='store', help="Código da seção onde a questão será atualizada")
     parser_update.set_defaults(func=main_update)
 
     parser_list = subparsers.add_parser('list', help='Lista todas as questões cadastradas no curso e seus respectivos ids')
     parser_list.set_defaults(func=main_list)
 
-    parser_down = subparsers.add_parser('down', help='DEBUG: Download de vpl.')
-    parser_down.add_argument('qid', type=int, metavar='qId', default='-1', action='store', help='URL da questão')
-    parser_down.add_argument('-s', '--section', metavar='COD_SECTION', default='0', type=str, action='store', help="Código da seção onde a questão será inserida")
-    parser_down.set_defaults(func=main_down)
+    # DEBUG: Ver dados do VPL baixado
+    # parser_down = subparsers.add_parser('down', help='DEBUG: Download de vpl.')
+    # parser_down.add_argument('qid', type=int, metavar='qId', default='-1', action='store', help='URL da questão')
+    # parser_down.add_argument('-s', '--section', metavar='COD_SECTION', default='0', type=str, action='store', help="Código da seção onde a questão será inserida")
+    # parser_down.set_defaults(func=main_down)
 
-    parser_compare = subparsers.add_parser('compare', help=desc_add)
-    parser_compare.add_argument('questoes', type=str, nargs='+', action='store', help='Pacote de questões')
-    parser_compare.add_argument('-s', '--section', metavar='COD_SECTION', default='0', type=str, action='store', help="Código da seção onde a questão será inserida")
-    parser_compare.set_defaults(func=main_compare)
+    # DEBUG: Comparar .json com questão web
+    # parser_compare = subparsers.add_parser('compare', help=desc_add)
+    # parser_compare.add_argument('questoes', type=str, nargs='+', action='store', help='Pacote de questões')
+    # parser_compare.add_argument('-s', '--section', metavar='COD_SECTION', default='0', type=str, action='store', help="Código da seção onde a questão será inserida")
+    # parser_compare.set_defaults(func=main_compare)
 
     args = parser.parse_args()
 
