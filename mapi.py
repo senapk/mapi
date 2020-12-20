@@ -445,13 +445,32 @@ def main_update(args):
         vplRetrived = api.getVpl(qbTitle)
 
         if vplRetrived:
-            if vplRetrived == vpl:
+            if (not args.force) and vplRetrived == vpl:
                 print("Não há mudanças a serem feitas.")
             else:
                 print("Atualizando @%d, seção %s." % (qbTitle, args.section))
                 vpl.id = vplRetrived.id
                 api.update(vpl)
         
+
+def main_push(args):
+    api = MoodleAPI(loadConfig(), args.section)
+    for file in args.questoes:
+        vpl = VPL().load(file)
+        qbTitle = MoodleAPI.getQByTitle(vpl.name) # @123
+        print("Recebendo questão.")
+        vplRetrived = api.getVpl(qbTitle)
+
+        if vplRetrived:
+            if (not args.force) and vplRetrived == vpl:
+                print("Não há mudanças a serem feitas.")
+            else:
+                print("Atualizando @%d, seção %s." % (qbTitle, args.section))
+                vpl.id = vplRetrived.id
+                api.update(vpl)
+        else:
+            print("Inserindo questão @%d na seção %s." % (qbTitle, args.section))
+            api.addVpl(vpl)
 
 def main_list(args):
     api = MoodleAPI(loadConfig(), "")
@@ -479,11 +498,17 @@ def main():
                 "questão.txt - arquivo ou diretório contendo as questões a serem enviadas (Ex.: https://github.com/brunocarvalho7/moodleAPI \n"
                 )
 
-    desc_update = ("Atualiza questões no moodle \n"
-                "Ex.: ./mapi.py update questao.json [questao2.json, questoes/, ...] [-s X]\n"
-                "atualiza as questões na seção X\n"
-                "-s para definir uma seção (0: padrão)\n"
-                "questao - arquivo ou diretório contendo as questões a serem enviadas (Ex.: https://github.com/brunocarvalho7/moodleAPI \n"
+    desc_update = ("Atualiza questões no moodle.\n"
+                "Ex.: ./mapi.py update questao [questao2.json] [questoes/] [-s X]\n"
+                "   questao: arquivo ou diretório contendo as questões a serem enviadas.\n"
+                "   -s: Especifica a seção (0: padrão)\n"
+                "   -f: Força atualização\n"
+                )
+
+    desc_push = ("Enviar e atualizar questões no Moodle.\n"
+                "Ex.: ./mapi.py push questao [questao2.json] [questoes/] [-s 0]\n"
+                "   questao: arquivo ou diretório contendo as questões a serem enviadas.\n"
+                "   -s: Especifica a seção (0: padrão)\n"
                 )
 
     parser_add = subparsers.add_parser('add', help=desc_add)
@@ -495,10 +520,19 @@ def main():
     parser_update = subparsers.add_parser('update', help=desc_update)
     parser_update.add_argument('questoes', type=str, nargs='+', action='store', help='Pacote de questões')
     parser_update.add_argument('-s', '--section', metavar='COD_SECTION', default='0', type=str, action='store', help="Código da seção onde a questão será atualizada")
+    parser_update.add_argument('-f', '--force', dest='force', action='store_true', help="Força atualização mesmo que não haja mudanças")
+    parser_update.set_defaults(force=False)
     parser_update.set_defaults(func=main_update)
 
     parser_list = subparsers.add_parser('list', help='Lista todas as questões cadastradas no curso e seus respectivos ids')
     parser_list.set_defaults(func=main_list)
+
+    parser_push = subparsers.add_parser('push', help=desc_push)
+    parser_push.add_argument('questoes', type=str, nargs='+', action='store', help='Lista de questões')
+    parser_push.add_argument('-s', '--section', metavar='COD_SECTION', default='0', type=str, action='store', help="Código da seção de destino")
+    parser_push.add_argument('-f', '--force', dest='force', action='store_true', help="Força atualização mesmo que não haja mudanças")
+    parser_push.set_defaults(force=False)
+    parser_push.set_defaults(func=main_push)
 
     # DEBUG: Ver dados do VPL baixado
     # parser_down = subparsers.add_parser('down', help='DEBUG: Download de vpl.')
