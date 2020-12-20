@@ -75,6 +75,7 @@ Se não houver arquivo requerido, ponha `"requiredFile" = null`.
 | ./mapi.py update questao.json [q2.json] [...] [-s 0] [-f, --force] | `-s` Seção de destino. <br/>`-f` Atualiza mesmo sem modificações aparentes. |
 | ./mapi.py push questao.json [q2.json] [...] [-s 0] [-f, --force] | `-s` Seção de destino.<br/>`-f` Envia e atualiza mesmo sem modificações aparentes. |
 | ./mapi.py list | Lista todas as questões cadastradas no curso e seus respectivos IDs. |
+
 Obs¹: Arquivos no formato do [modelo de questões](#modelo-de-questões) ou pastas seguindo as [estruturas de diretório de uma questão](#estruturas-de-diretório-de-uma-questão) são aceitos.
 
 ## Estruturas de diretório de uma questão
