@@ -282,7 +282,7 @@ class JsonTarget:
             self.description = description
             self.executionFiles = []
             self.requiredFile = None
-            self.executionFiles.append(JsonTarget.EFile("evaluation.cases", tests))
+            self.executionFiles.append(JsonTarget.EFile("vpl_evaluate.cases", tests))
 
     #receive a folder and retorn the json string
     @staticmethod 
