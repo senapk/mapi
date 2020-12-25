@@ -24,6 +24,7 @@ class MoodleAPI(object):
         self.urlBase = configData["url"] # https://moodle.quixada.ufc.br
         self.urlCourse = self.urlBase + "/course/view.php?id=" + self.course
         self.urlDeleteAction = self.urlBase + "/course/mod.php"
+        self.urlOpcoesExecucao = self.urlBase + "/mod/vpl/forms/executionoptions.php?id=ID_QUESTAO"
         self.urlDeleteVpl = self.urlDeleteAction + "?sr=0&delete=ID_QUESTAO"
         self.urlNewVpl = self.urlBase + "/course/modedit.php?add=vpl&type=&course=" + self.course + "&section=" + self.section + "&return=0&sr=0"
         self.urlViewVpl = self.urlBase + '/mod/vpl/view.php?id=ID_QUESTAO'
@@ -146,9 +147,11 @@ class MoodleAPI(object):
 
         self.browser['name'] = vpl.name
         self.browser['introeditor[text]'] = vpl.description
-        self.browser["duedate[enabled]"] = []
+        self.browser["duedate[enabled]"] = 0
+        
         self.browser.submit()
-
+        
+        # Parte 2
         print("Enviando os arquivos de execuções...")
         # print("ID=",vpl.id)
         # print(vpl)
@@ -170,6 +173,23 @@ class MoodleAPI(object):
             vplFiles.append(vpl.requiredFile)
         
         self.sendVplFiles(self.urlReqFilesSave.replace("ID_QUESTAO", vpl.id), vplFiles)
+
+        # Parte 3
+        # DEBUG
+        print("Definindo opções de execução")
+        self.browser.open(self.urlOpcoesExecucao.replace("ID_QUESTAO", vpl.id))
+        self.login()
+
+        try:
+            self.browser.select_form(action='executionoptions.php')
+        except mechanize.FormNotFoundError as e:
+            print("erro no login")
+            exit(1)
+        self.browser['run'] = ["1"]
+        self.browser['evaluate'] = ["1"]
+        self.browser.submit()
+
+
 
     def sendVplFiles(self, url, vplFiles):
         params = {'files': vplFiles,
