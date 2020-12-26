@@ -149,21 +149,26 @@ class MoodleAPI(object):
         self.browser['introeditor[text]'] = vpl.description
         self.browser["duedate[enabled]"] = 0
         
-        self.browser.submit()
+        self.browser.submit(name="submitbutton")
+        
+        vpl.id = self.browser.geturl().split("id=")[1].split("&")[0]
+        
+
         
         # Parte 2
         print("Enviando os arquivos de execuções...")
         # print("ID=",vpl.id)
         # print(vpl)
 
-        if(not vpl.id):
-            qStions = self.listByQuestions()
-            qbTitle = MoodleAPI.getQByTitle(vpl.name) # @123
-            if (str(qbTitle) in qStions) and (str(self.section) in qStions[str(qbTitle)].keys()):
-                vpl.id = qStions[str(qbTitle)][str(self.section)]
+        # if(not vpl.id):
+        #     qStions = self.listByQuestions()
+        #     qbTitle = MoodleAPI.getQByTitle(vpl.name) # @123
+        #     if (str(qbTitle) in qStions) and (str(self.section) in qStions[str(qbTitle)].keys()):
+        #         vpl.id = qStions[str(qbTitle)][str(self.section)]
 
-        if(not vpl.id):
-            vpl.id = self.getVplId(vpl.name)
+        # if(not vpl.id):
+        #     vpl.id = self.getVplId(vpl.name)
+        
 
         self.sendVplFiles(self.urlFilesSave.replace("ID_QUESTAO", vpl.id), vpl.executionFiles)
 
