@@ -96,7 +96,7 @@ class Credentials:
             with open(mapirc) as f:
                 config = json.load(f)
         except (FileNotFoundError, json.JSONDecodeError) as e:
-            print("Crie seu arquivo com suas credenciais de acesso: " + mapirc)
+            print("Create a file with your access credentials: " + mapirc)
             print(e)
             exit(1)
 
@@ -169,74 +169,9 @@ class JsonVplLoader:
         if os.path.isfile(target):
             with open(target, encoding='utf-8') as f:
                 return JsonVplLoader._load_from_string(f.read())
-        print("fail: target invalido " + target)
+        print("fail: invalid target " + target)
         exit(1)
 
-
-# class VPL:
-#     def __init__(self, name="", description="", tests=""):
-#         self.id: str = ""
-#         self.name: str = name
-#         self.description: str = description
-#         self.tests: str = tests
-#         self.executionFiles: List[JsonFile] = []
-#         self.requiredFile:  = None
-#
-#     def load(self, path):
-#         if os.path.isfile(path + ".json"):
-#             path = path + ".json"
-#
-#         data = VplLoader.load(path)
-#         self.name = data["title"]
-#         self.description = data["description"]
-#         self.executionFiles = data["executionFiles"]
-#
-#         for entry in self.executionFiles:
-#             entry['encoding'] = 0
-#         if data["requiredFile"] is not None:
-#             self.requiredFile = data["requiredFile"]
-#         return self
-#
-#     def __str__(self):
-#         out = "title: " + self.name + "\n" + "description: " + self.description
-#         for file in self.executionFiles:
-#             out += "----" + file["name"] + "\n" + file["contents"] + "\n"
-#         if self.requiredFile is not None:
-#             out += "----" + self.requiredFile["name"] + "\n" + self.requiredFile["contents"]
-#         return out
-
-    # def __eq__(self, value):
-    #     response = value.name == self.name
-    #     # print("NAME:","OK" if resposta else "FAIL")
-    #
-    #     value_parsed_descrp = BeautifulSoup(value.description, 'html.parser')
-    #     parsed_descrp = BeautifulSoup(self.description, 'html.parser')
-    #     response = response and (parsed_descrp.get_text() == value_parsed_descrp.get_text())
-    #
-    #     # print("DESCRIPT:","OK" if resposta else "FAIL")
-    #
-    #     for arq in self.executionFiles:
-    #         parsed_f = BeautifulSoup(arq["contents"], 'html.parser')  # Converte HTML para formato BeautifulSoup
-    #         for search_file in value.executionFiles:  # Itera do segundo VPL
-    #             if search_file["name"] == arq["name"]:  # Encontrado
-    #                 search_file_contents_parsed = BeautifulSoup(search_file["contents"], 'html.parser').get_text()
-    #                 response = response and (parsed_f.get_text() == search_file_contents_parsed)  # equal content
-    #     # print("F_CONTENTS:","OK" if resposta else "FAIL")
-    #
-    #     if self.requiredFile is not None or value.requiredFile is not None:
-    #         if self.requiredFile is not None and value.requiredFile is not None:
-    #             response = response and (self.requiredFile["name"] == value.requiredFile["name"])  # Mesmo nome
-    #
-    #         self_req_cont = None
-    #         value_req_cont = None
-    #         if self.requiredFile is not None:
-    #             self_req_cont = BeautifulSoup(self.requiredFile["contents"], 'html.parser').get_text()
-    #         if value.requiredFile is not None:
-    #             value_req_cont = BeautifulSoup(value.requiredFile["contents"], 'html.parser').get_text()
-    #         response = response and (self_req_cont == value_req_cont)
-    #     # print("REQUIREDFILE:","OK" if resposta else "FAIL")
-    #
-    #     return response
 
 # to print loading bar
 class Bar:
@@ -413,7 +348,7 @@ class MoodleAPI:
             self.browser.select_form(action=self.urlHandler.delete_action())
             self.browser.submit()
         except mechanize.FormNotFoundError as e:
-            print("Erro no login", e)
+            print("Login error", e)
             exit(1)
 
     def download_vpl(self, vplid: int) -> JsonVPL:
@@ -503,7 +438,7 @@ class MoodleAPI:
         self._login()
 
     def get_course_structure(self) -> Structure:
-        while(True):
+        while True:
             try:
                 print("- Loading course structure")
                 Bar.open()
@@ -711,7 +646,7 @@ def main():
 
     parser_rm = subparsers.add_parser('rm', parents=[p_config], help="Remove from Moodle")
     group_rm = parser_rm.add_mutually_exclusive_group()
-    group_rm.add_argument('-i', '--ids', type=int, metavar='ID', nargs='*', action='store', help='Índices ')
+    group_rm.add_argument('-i', '--ids', type=int, metavar='ID', nargs='*', action='store', help='')
     group_rm.add_argument('--all', action='store_true', help="Remove all vpls from course")
     group_rm.add_argument('-s', '--section', metavar='SECTION', type=int, help="")
     parser_rm.set_defaults(func=Actions.rm)
