@@ -1,628 +1,739 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 
-
+from typing import List, Optional, Any, Dict
 from bs4 import BeautifulSoup
 import mechanize
 import json
 import os
 import argparse
 import sys
-import zipfile
-import shutil
-import getpass #get pass
+import getpass  # get pass
 import pathlib
-import urllib
-import subprocess
-
-class MoodleAPI(object):
-    def __init__(self, configData, section):
-        self.username = configData["username"] #puxa do config
-        self.password = configData["password"]
-        self.course = configData["course"] #id do curso (344)
-        self.section = section #parametro utilizado por exemplo na hora de add o vpl, para escolher onde inserir
-        self.urlBase = configData["url"] # https://moodle.quixada.ufc.br
-        self.urlCourse = self.urlBase + "/course/view.php?id=" + self.course
-        self.urlDeleteAction = self.urlBase + "/course/mod.php"
-        self.urlDeleteVpl = self.urlDeleteAction + "?sr=0&delete=ID_QUESTAO"
-        self.urlNewVpl = self.urlBase + "/course/modedit.php?add=vpl&type=&course=" + self.course + "&section=" + self.section + "&return=0&sr=0"
-        self.urlViewVpl = self.urlBase + '/mod/vpl/view.php?id=ID_QUESTAO'
-        self.urlUpdateVpl = self.urlBase + '/course/modedit.php?update=ID_QUESTAO'
-        self.urlNewTest = self.urlBase + "/mod/vpl/forms/testcasesfile.php?id=ID_QUESTAO&edit=3" #troca ID_QUESTAO na hora do insert
-        self.urlTestSave = self.urlBase + "/mod/vpl/forms/testcasesfile.json.php?id=ID_QUESTAO&action=save" #para fazer o download do teste
-        self.urlFilesSave = self.urlBase + '/mod/vpl/forms/executionfiles.json.php?id=ID_QUESTAO&action=save' # para enviar os arquivos de execução
-        self.urlReqFilesSave = self.urlBase + '/mod/vpl/forms/requiredfiles.json.php?id=ID_QUESTAO&action=save' # para enviar os arquivos requeridos
-        self.browser = mechanize.Browser()
-        self.browser.set_handle_robots(False)
-
-    def login(self):
-        try:
-            self.browser.select_form(action=(self.urlBase + '/login/index.php'))
-            self.browser['username'] = self.username
-            self.browser['password'] = self.password
-            self.browser.submit()
-            print("[AFL]",self.browser.title())
-        except mechanize.FormNotFoundError as e:
-            pass
-    
-    def addVpl(self, vpl):
-        ''' Chamado pelo add '''
-        print("Enviando a questão %s para a seção %s" %(vpl.name, self.section))
-        
-        self.submitVpl(self.urlNewVpl, vpl)
-
-        print("Questão adicionada com sucesso!!")
+import requests
+from types import SimpleNamespace  # to load json
 
 
-    def update(self, vpl):
-        ''' Chamado pelo update '''
-        print("Atualizando a questão %s na seção %s" % (vpl.name, self.section))
-        
-        self.submitVpl(self.urlUpdateVpl.replace("ID_QUESTAO", vpl.id), vpl)
-
-        print("Questão atualizada com sucesso!!")
-
-    def delete(self, vpl):
-        self.browser.open(self.urlDeleteVpl.replace("ID_QUESTAO", vpl.id))
-        self.login()
-
-        try:
-            self.browser.select_form(action=self.urlDeleteAction)
-        except mechanize.FormNotFoundError as e:
-            print("Erro no login",e)
-            exit(1)
-        
-        self.browser.submit()
-        # params = {u'confirm': "1", u'sesskey':"", u'sr':u'0', u'delete':"11402"}
-        # data = urllib.urlencode(params)
-        # request = mechanize.Request( self.urlDeleteVpl )
-        # response = mechanize.urlopen(request, data=data)
-
-
-    def downloadVpl(self, url, vplid):
-        # print("<=",url)
-        self.browser.open(url)
-        self.login()
-
-        arquivos = {}
-
-        soup = BeautifulSoup(self.browser.response().read(), 'html.parser')
-
-        arqs = soup.findAll('h4', {'id': lambda value: value and value.startswith("fileid")})
-        titulo = soup.find('a', {'href': self.browser.geturl()}).get_text()
-        descricao = soup.find('div', {'class': 'box py-3 generalbox'}).find('div',{'class':'no-overflow'}).get_text()
-        required = None
-
-        for arq in arqs:
-            cont = soup.find('pre', {'id': 'code'+arq.get('id') })
-            if arq.find_previous_sibling('h2').get_text() == "Arquivos requeridos":
-                required = { 'name':arq.get_text(), 'contents':str(cont.get_text())}
-            else:
-                arquivos[arq.get_text()] = str(cont.get_text())
-            # print('->',arq.get_text())
-            # print('==',cont.get_text())
-        # print(titulo)
-        # print(descricao)
-        # print("required",required)
-        # print("arquivos",arquivos)
-
-        # TODO: receber os arquivos do VPL online
-        V = VPL( name=titulo, description=descricao )
-        for arq in arquivos.keys():
-            V.executionFiles.append({
-                'name': arq,
-                'contents': arquivos[arq],
-                'encoding':0,
-            })
-        if required:
-            V.requiredFile = required
-
-        V.id = vplid
-        return V
-
-    def getVpl(self, qId):
-        # print("BUSCANDO QID:",qId)
-        vplId = -1
-        qStions = self.listByQuestions()
-
-        if (str(qId) in qStions) and (str(self.section) in qStions[str(qId)].keys()):
-            vplId = qStions[str(qId)][str(self.section)]
-        if vplId != -1:
-            return self.downloadVpl(self.urlViewVpl.replace("ID_QUESTAO", vplId), vplId)
-        return None
-
-
-    def submitVpl(self, url, vpl):
-        self.browser.open(url)
-        self.login()
-
-        try:
-            self.browser.select_form(action='modedit.php')
-        except mechanize.FormNotFoundError as e:
-            print("erro no login")
-            exit(1)
-            
-        print(self.browser.title())
-
-        self.browser['name'] = vpl.name
-        self.browser['introeditor[text]'] = vpl.description
-        self.browser["duedate[enabled]"] = []
-        self.browser.submit()
-
-        print("Enviando os arquivos de execuções...")
-        # print("ID=",vpl.id)
-        # print(vpl)
-
-        if(not vpl.id):
-            qStions = self.listByQuestions()
-            qbTitle = MoodleAPI.getQByTitle(vpl.name) # @123
-            if (str(qbTitle) in qStions) and (str(self.section) in qStions[str(qbTitle)].keys()):
-                vpl.id = qStions[str(qbTitle)][str(self.section)]
-
-        if(not vpl.id):
-            vpl.id = self.getVplId(vpl.name)
-
-        self.sendVplFiles(self.urlFilesSave.replace("ID_QUESTAO", vpl.id), vpl.executionFiles)
-
-        vplFiles = []
-
-        if(vpl.requiredFile):
-            vplFiles.append(vpl.requiredFile)
-        
-        self.sendVplFiles(self.urlReqFilesSave.replace("ID_QUESTAO", vpl.id), vplFiles)
-
-    def sendVplFiles(self, url, vplFiles):
-        params = {'files': vplFiles,
-                  'comments':''}
-        files = json.dumps(params, default=self.__dumper, indent=2)
-
-        self.browser.open(url, data=files)
-
-    def listAll(self):
-        self.browser.open(self.urlCourse)
-        self.login()
-
-        soup = BeautifulSoup(self.browser.response().read(), 'html.parser')
-        topics = soup.find('ul', {'class:', 'topics'})
-        # print(topics)
-        childrens = topics.contents
-
-        for section in childrens:
-            id_section = section['id']
-            desc_section = section['aria-label']
-            print('- %s: %s' % (id_section.replace('section-', ''), desc_section))
-
-            activities = soup.select('#' + id_section + ' > div.content > ul > li > div > div.mod-indent-outer > div > div.activityinstance > a')
-            for activity in activities:
-                if not activity['href'].startswith(self.urlBase + '/mod/vpl/view.php?id='):
-                    continue
-                id_activity = activity['href'].replace(self.urlBase + '/mod/vpl/view.php?id=', '')
-                text = activity.get_text().replace(' Laboratório Virtual de Programação', '')
-                print('    - %s: [%s](%s)' %(id_activity, text, activity['href']))
-
-
-    def listByQuestions(self):
-        ''' { 'ID_QUESTAO' : { 'TOPICO': 'VPL', ... }, ... }\n
-        ID_QUESTAO -> ID questão do GitHub;\n
-        TOPICO -> ID do tópico;\n
-        VPL -> ID da VPL para modificação.'''
-        self.browser.open(self.urlCourse)
-        self.login()
-
-        soup = BeautifulSoup(self.browser.response().read(), 'html.parser')
-        topics = soup.find('ul', {'class:', 'topics'})
-        # print(topics)
-        childrens = topics.contents
-        struc = {}
-
-        for section in childrens:
-            id_section = section['id']
-            desc_section = section['aria-label']
-            # print('- %s: %s' % (id_section.replace('section-', ''), desc_section))
-
-            activities = soup.select('#' + id_section + ' > div.content > ul > li > div > div.mod-indent-outer > div > div.activityinstance > a')
-            for activity in activities:
-                if not activity['href'].startswith(self.urlBase + '/mod/vpl/view.php?id='):
-                    continue
-                id_activity = activity['href'].replace(self.urlBase + '/mod/vpl/view.php?id=', '')
-                text = activity.get_text().replace(' Laboratório Virtual de Programação', '')
-                vplId = MoodleAPI.getQByTitle(text)
-                # print("?",text,"| ID=",vplId)
-                if str(id_activity).isnumeric() and vplId != -1:
-                    if not str(vplId) in struc:
-                        struc[str(vplId)] = {}
-                    # print('struc[%s][%s]=%s' %(vplId, id_section.replace('section-', ''), id_activity))
-                    struc[str(vplId)][str(id_section.replace('section-', ''))] = id_activity
-        return struc
-
-    @staticmethod
-    def getQByTitle(title):
-        ''' "@123 ABCDE..." -> 123 '''
-        ttlSplt = title.split(" ")
-        for ttl in ttlSplt:
-            if ttl[0] == '@' and str(ttl[1:]).isnumeric():
-                return int(ttl[1:])
-        return -1
-
-    def getVplId(self, title):
-        index = title.split(" ")[0]
-        if index[0] != '@':
-            return -1
-
-        self.browser.open(self.urlCourse)
-        self.login()
-        for l in self.browser.links():
-            if(l.url.startswith(self.urlBase + "/mod/vpl/view.php?id=")):
-                text = l.text.replace(" Laboratório Virtual de Programação", "")
-                qid = l.url.replace(self.urlBase + "/mod/vpl/view.php?id=" , "")
-                if ord(text[0]) == 65279:
-                    text = text[1:]
-                qindex = text.split(" ")[0]
-                if qindex.startswith("@"):
-                    if qindex == index:
-                        return qid
-        return -1
-
-    def __dumper(self, obj):
-        try:
-            return obj.toJSON()
-        except:
-            return obj.__dict__
-
-# Carrega o json
-class JsonTarget: 
-    class EFile:
-        def __init__(self, name, contents):
-            self.name = name
-            self.contents = contents
-
-    class Question:
-        def __init__(self, title, description, tests):
-            self.title = title
-            self.description = description
-            self.executionFiles = []
-            self.requiredFile = None
-            self.executionFiles.append(JsonTarget.EFile("vpl_evaluate.cases", tests))
-
-    #receive a folder and retorn the json string
-    @staticmethod 
-    def _load_folder(folder):
-        title = ""
-        description = ""
-        tests = ""
-
-        idxQuest = folder
-        if os.sep in idxQuest:
-            idxQuest=idxQuest[str(idxQuest).rfind(os.sep)+1:] # ../../001
-            
-        with open(folder + os.sep + "Readme.md") as f:
-            title = f.read().split("\n")[0]
-            words = title.split(" ")
-            if words[0].count("#") == len(words[0]): #only #
-                del words[0]
-            title = "@" + idxQuest + " " + " ".join(words)
-        with open(folder + os.sep + "t.html") as f:
-            description = f.read()
-        with open(folder + os.sep + "t.vpl") as f:
-            tests = f.read()
-        question = JsonTarget.Question(title, description, tests)
-        s = json.dumps(question, default=lambda o: o.__dict__, indent=4)
-        return s
-
-    @staticmethod
-    def load(target):
-        data = ""
-        if os.path.isfile(target):
-            with open(target, encoding='utf-8') as f:
-                data = json.load(f)
-        elif os.path.isdir(target):
-            data = json.loads(JsonTarget._load_folder(target))
-        else:
-            print("fail: target invalido " + target)
-            exit(1)
-        return data
-
-
-class VPL(object):
-    def __init__(self, name = "", shortdescription = "", description = "", tests = "", executionFiles = []):
-        self.id = ""
-        self.name = name
-        self.description = description
-        self.tests = tests
-        self.executionFiles = executionFiles
-        self.requiredFile = None
-
-    def load(self, path):
-        if os.path.isfile(path + ".json"):
-            path = path + ".json"
-
-        data = JsonTarget.load(path)
-        self.name = data["title"]
-        self.description = data["description"]
-        self.executionFiles = data["executionFiles"]
-
-        for entry in self.executionFiles:
-            entry['encoding'] = 0
-        if data["requiredFile"] != None:
-            self.requiredFile = data["requiredFile"]
-        return self
+class URLHandler:
+    def __init__(self, url_base: str, course_id: str):
+        self._url_base: str = url_base
+        self.course_id: str = course_id
 
     def __str__(self):
-        out = "title: " + self.name + "\n" + "description: " + self.description
-        for file in self.executionFiles:
-            out += "----" + file["name"] + "\n" + file["contents"] + "\n"
-        if self.requiredFile != None:
-            out += "----" + self.requiredFile["name"] + "\n" + self.requiredFile["contents"]
-        return out
+        return self._url_base + ":" + self.course_id
 
-    def __eq__(self, value):
-        resposta = value.name == self.name
-        # print("NAME:","OK" if resposta else "FAIL")
+    def base(self):
+        return self._url_base
 
-        valueParsedDescrp = BeautifulSoup(value.description, 'html.parser')
-        parsedDescrp = BeautifulSoup(self.description, 'html.parser')
-        resposta = resposta and (parsedDescrp.get_text() == valueParsedDescrp.get_text())
+    def course(self):
+        return self._url_base + "/course/view.php?id=" + self.course_id
 
-        # print("DESCRIPT:","OK" if resposta else "FAIL")
+    def login(self):
+        return self._url_base + '/login/index.php'
 
-        
-        for arq in self.executionFiles:
-            parsedF = BeautifulSoup(arq["contents"], 'html.parser') # Converte HTML para formato BeautifulSoup
-            for searchFile in value.executionFiles: # Itera do segundo VPL
-                if searchFile["name"] == arq["name"]: # Encontrado
-                    searchFileContentsParsed = BeautifulSoup(searchFile["contents"], 'html.parser').get_text()
-                    resposta = resposta and (parsedF.get_text() == searchFileContentsParsed) # Igualdade de conteúdo
-        # print("F_CONTENTS:","OK" if resposta else "FAIL")
-        
-        if self.requiredFile != None or value.requiredFile != None:
-            if self.requiredFile != None and value.requiredFile != None:
-                resposta = resposta and (self.requiredFile["name"] == value.requiredFile["name"]) # Mesmo nome
-            
-            selfReqCont = None
-            valueReqCont = None
-            if self.requiredFile != None:
-                selfReqCont = BeautifulSoup(self.requiredFile["contents"], 'html.parser').get_text()
-            if value.requiredFile != None:
-                valueReqCont = BeautifulSoup(value.requiredFile["contents"], 'html.parser').get_text()
-            resposta = resposta and (selfReqCont == valueReqCont)
-        # print("REQUIREDFILE:","OK" if resposta else "FAIL")
+    def delete_action(self):
+        return self._url_base + "/course/mod.php"
 
-        return resposta
+    def delete_vpl(self, id: int):
+        return self.delete_action() + "?sr=0&delete=" + str(id)
+
+    def new_vpl(self, section: int):
+        return self._url_base + "/course/modedit.php?add=vpl&type=&course=" + self.course_id + "&section=" + \
+               str(section) + "&return=0&sr=0 "
+
+    def view_vpl(self, id: int):
+        return self._url_base + '/mod/vpl/view.php?id=' + str(id)
+
+    def update_vpl(self, id: int):
+        return self._url_base + '/course/modedit.php?update=' + str(id)
+
+    def new_test(self, id: int):
+        return self._url_base + "/mod/vpl/forms/testcasesfile.php?id=" + str(id) + "&edit=3"
+
+    # def test_save(self, id: int):
+    #     return self._url_base + "/mod/vpl/forms/testcasesfile.json.php?id=" + str(id) + "&action=save"
+
+    def execution_files(self, id: int):
+        return self._url_base + '/mod/vpl/forms/executionfiles.json.php?id=' + str(id) + '&action=save'
+
+    def required_files(self, id: int):
+        return self._url_base + '/mod/vpl/forms/requiredfiles.json.php?id=' + str(id) + '&action=save'
+
+    def execution_options(self, id: int):
+        return self._url_base + "/mod/vpl/forms/executionoptions.php?id=" + str(id)
+
+    @staticmethod
+    def parse_id(url) -> str:
+        return url.split("id=")[1].split("&")[0]
+
+    @staticmethod
+    def is_vpl_url(url) -> bool:
+        return '/mod/vpl/view.php?id=' in url
 
 
-def loadConfig():
-    config = {} # ["username"] ["url"] ["course"] ["password"]
-    home_mapirc = str(pathlib.Path.home()) + os.sep + '.mapirc'
-    if not os.path.isfile(home_mapirc):
-        print("Conforme instruções do Readme, crie o arquivo " + home_mapirc)
+class Credentials:
+    config_path = None
+    instance = None
+
+    def __init__(self, username: str, password: str, url: str, course: str, remote: str):
+        self.username = username
+        self.password = password
+        self.url = url
+        self.course = course
+        self.remote = remote
+
+    @staticmethod
+    def load_credentials():
+        if Credentials.instance is not None:
+            return Credentials.instance
+        config = {}  # ["username"] ["url"] ["course"] ["password"]
+        if Credentials.config_path is None:
+            Credentials.config_path = str(pathlib.Path.home()) + os.sep + '.mapirc'
+        mapirc = Credentials.config_path
+        try:
+            if not os.path.isfile(mapirc):
+                raise FileNotFoundError
+            with open(mapirc) as f:
+                config = json.load(f)
+        except (FileNotFoundError, json.JSONDecodeError) as e:
+            print("Crie seu arquivo com suas credenciais de acesso: " + mapirc)
+            print(e)
+            exit(1)
+
+        if "password" not in config or config["password"] is None:
+            config["password"] = getpass.getpass()
+        if "remote" not in config:
+            config["remote"] = ""
+        Credentials.instance = Credentials(config["username"], config["password"], config["url"], config["course"],
+                                           config["remote"])
+
+        return Credentials.instance
+
+    def __str__(self):
+        return self.username + ":" + self.password + ":" + self.url + ":" + self.course
+
+
+# Format used to send additional files to VPL
+class JsonFile:
+    def __init__(self, name: str, contents: str):
+        self.name: str = name
+        self.contents: str = contents
+        self.encoding: int = 0
+
+    def __str__(self):
+        return self.name + ":" + self.contents + ":" + str(self.encoding)
+
+
+class JsonVPL:
+    test_cases_file_name = "vpl_evaluate.cases"
+
+    def __init__(self, title: str, description: str, tests: Optional[str] = None):
+        self.title: str = title
+        self.description: str = description
+        self.executionFiles: List[JsonFile] = []
+        self.requiredFile: Optional[JsonFile] = None
+        if tests is not None:
+            self.set_test_cases(tests)
+
+    def set_test_cases(self, tests: str):
+        file = next((file for file in self.executionFiles if file.name == JsonVPL.test_cases_file_name), None)
+        if file is not None:
+            file.contents = tests
+            return
+        self.executionFiles.append(JsonFile("vpl_evaluate.cases", tests))
+
+    def to_json(self) -> str:
+        return json.dumps(self, default=lambda o: o.__dict__, indent=4)
+
+    def __str__(self):
+        return self.to_json()
+
+
+class JsonVplLoader:
+    @staticmethod
+    def _load_from_string(text: str) -> JsonVPL:
+        return json.loads(text, object_hook=lambda d: SimpleNamespace(**d))
+
+    # remote is like https://raw.githubusercontent.com/qxcodefup/moodle/master/base/
+    @staticmethod
+    def load(target: str, remote: bool) -> JsonVPL:
+        if remote:
+            remote_url = Credentials.load_credentials().remote
+            url = os.path.join(remote_url, target + "/mapi.json")
+            print("    - Loading from remote")
+            response = requests.get(url, allow_redirects=True)
+            if response.text != "404: Not Found":
+                return JsonVplLoader._load_from_string(response.text)
+        if os.path.isdir(target):
+            target = os.path.join(target, "mapi.json")
+        if os.path.isfile(target):
+            with open(target, encoding='utf-8') as f:
+                return JsonVplLoader._load_from_string(f.read())
+        print("fail: target invalido " + target)
         exit(1)
 
-    try:
-        with open(home_mapirc) as f:
-            config = json.load(f)
-    except:
-        print("Conforme instruções do Readme, crie o arquivo " + home_mapirc)
-        exit(1)
 
-    if config["password"] is None:
-        config["password"] = getpass.getpass()
-    return config
+# class VPL:
+#     def __init__(self, name="", description="", tests=""):
+#         self.id: str = ""
+#         self.name: str = name
+#         self.description: str = description
+#         self.tests: str = tests
+#         self.executionFiles: List[JsonFile] = []
+#         self.requiredFile:  = None
+#
+#     def load(self, path):
+#         if os.path.isfile(path + ".json"):
+#             path = path + ".json"
+#
+#         data = VplLoader.load(path)
+#         self.name = data["title"]
+#         self.description = data["description"]
+#         self.executionFiles = data["executionFiles"]
+#
+#         for entry in self.executionFiles:
+#             entry['encoding'] = 0
+#         if data["requiredFile"] is not None:
+#             self.requiredFile = data["requiredFile"]
+#         return self
+#
+#     def __str__(self):
+#         out = "title: " + self.name + "\n" + "description: " + self.description
+#         for file in self.executionFiles:
+#             out += "----" + file["name"] + "\n" + file["contents"] + "\n"
+#         if self.requiredFile is not None:
+#             out += "----" + self.requiredFile["name"] + "\n" + self.requiredFile["contents"]
+#         return out
+
+    # def __eq__(self, value):
+    #     response = value.name == self.name
+    #     # print("NAME:","OK" if resposta else "FAIL")
+    #
+    #     value_parsed_descrp = BeautifulSoup(value.description, 'html.parser')
+    #     parsed_descrp = BeautifulSoup(self.description, 'html.parser')
+    #     response = response and (parsed_descrp.get_text() == value_parsed_descrp.get_text())
+    #
+    #     # print("DESCRIPT:","OK" if resposta else "FAIL")
+    #
+    #     for arq in self.executionFiles:
+    #         parsed_f = BeautifulSoup(arq["contents"], 'html.parser')  # Converte HTML para formato BeautifulSoup
+    #         for search_file in value.executionFiles:  # Itera do segundo VPL
+    #             if search_file["name"] == arq["name"]:  # Encontrado
+    #                 search_file_contents_parsed = BeautifulSoup(search_file["contents"], 'html.parser').get_text()
+    #                 response = response and (parsed_f.get_text() == search_file_contents_parsed)  # equal content
+    #     # print("F_CONTENTS:","OK" if resposta else "FAIL")
+    #
+    #     if self.requiredFile is not None or value.requiredFile is not None:
+    #         if self.requiredFile is not None and value.requiredFile is not None:
+    #             response = response and (self.requiredFile["name"] == value.requiredFile["name"])  # Mesmo nome
+    #
+    #         self_req_cont = None
+    #         value_req_cont = None
+    #         if self.requiredFile is not None:
+    #             self_req_cont = BeautifulSoup(self.requiredFile["contents"], 'html.parser').get_text()
+    #         if value.requiredFile is not None:
+    #             value_req_cont = BeautifulSoup(value.requiredFile["contents"], 'html.parser').get_text()
+    #         response = response and (self_req_cont == value_req_cont)
+    #     # print("REQUIREDFILE:","OK" if resposta else "FAIL")
+    #
+    #     return response
+
+# to print loading bar
+class Bar:
+    @staticmethod
+    def open():
+        print("    - [ ", end='', flush=True)
+
+    @staticmethod
+    def send(text: str):
+        print(text.center(15, '.') + " ", end='', flush=True)
+
+    @staticmethod
+    def done(text=""):
+        print("] DONE" + text)
+
+    @staticmethod
+    def fail(text=""):
+        print("] FAIL" + text)
 
 
-def main_clone(args):
-    dest = "/tmp/mapi"
-    if args.output != "":
-        dest = args.output
-    
-    for id in args.questoes:
-        mqDest = dest+ ("/%d" % id)
-        p = subprocess.Popen("svn export https://github.com/qxcodefup/moodle/trunk/base/%d %s | grep \"Exportada\" | awk '{print $2}'" % (id, mqDest), stdout=subprocess.PIPE, shell=True)
-        (output, err) = p.communicate()
-        print("Rev. ", output)
-        print("Salvo em: %s" % mqDest)
+class StructureItem:
+    def __init__(self, section: int, id: int, title: str):
+        self.section: int = section
+        self.id: int = id
+        self.title: str = title
+        self.label: str = StructureItem.parse_label(title)
 
-def main_add(args):
-    api = MoodleAPI(loadConfig(), args.section)
-    for file in args.questoes:
-        vpl = VPL().load(file)
-        print(vpl.name)
+    def __str__(self):
+        return "section={}, id={}, label={}, title={}".format(self.section, self.id, self.label, self.title)
 
-        qid = -1
-        qStions = api.listByQuestions()
-        qbTitle = MoodleAPI.getQByTitle(vpl.name) # @123
-
-        if (str(qbTitle) in qStions) and (str(args.section) in qStions[str(qbTitle)].keys()):
-            qid = qStions[str(qbTitle)][str(args.section)]
-
-        # qid = api.getVplId(vpl.name)
-        if qid == -1:
-            print("Adicionando nova questão")
-            api.addVpl(vpl)
+    # "@123 ABCDE..." -> 123
+    # "" se não tiver label
+    @staticmethod
+    def parse_label(title) -> str:
+        ttl_splt = title.strip().split(" ")
+        for ttl in ttl_splt:
+            if ttl[0] == '@':
+                return ttl[1:]
+        return ""
 
 
+# save course structure: sections, ids, titles
+class Structure:
+    def __init__(self, soup):
+        self.soup = soup
+        topics = soup.find('ul', {'class:', 'topics'})
+        self.childrens = topics.contents
 
-def main_down(args):
-    api = MoodleAPI(loadConfig(), args.section)
-    if args.qid != -1:
-        vpl = api.getVpl(args.qid) 
-        print(vpl)
+        self.section_item_list: List[List[StructureItem]] = self._make_entries_by_section()
+        self.section_labels: List[str] = self._make_section_labels()
+        # redundant info
+        self.ids_dict: Dict[int, StructureItem] = self._make_ids_dict()
 
-def main_compare(args):
-    api = MoodleAPI(loadConfig(), args.section)
-    for file in args.questoes:
-        vpl = VPL().load(file)
-        qid = -1
-        qStions = api.listByQuestions()
-        qbTitle = MoodleAPI.getQByTitle(vpl.name) # @123
+    def add_entry(self, section: int, id: int, title: str):
+        if id not in self.ids_dict.keys():
+            item = StructureItem(section, id, title)
+            self.section_item_list[section].append(item)
+            self.ids_dict[id] = item
 
-        vplRetrived = api.getVpl(qbTitle)
+    def search_by_label(self, label: str, section: Optional[int] = None) -> List[StructureItem]:
+        if section is None:
+            return [item for item in self.ids_dict.values() if item.label == label]
+        return [item for item in self.section_item_list[section] if item.label == label]
 
-        if vplRetrived:
-            # print("DOWN",vplRetrived)
-            # print("JSON",vpl)
+    def get_id_list(self, section: Optional[int] = None) -> List[int]:
+        if section is None:
+            return list(self.ids_dict.keys())
+        return [item.id for item in self.section_item_list[section]]
 
-            if vplRetrived == vpl:
-                print("IGUAIS")
+    def get_itens(self, section: Optional[int] = None) -> List[StructureItem]:
+        if section is None:
+            return list(self.ids_dict.values())
+        return self.section_item_list[section]
+
+    def get_item(self, id: int) -> StructureItem:
+        return self.ids_dict[id]
+
+    def has_id(self, id: int, section: Optional[int] = None) -> bool:
+        if section is None:
+            return id in self.ids_dict.keys()
+        return id in self.get_id_list(section)
+
+    def rm_item(self, id: int):
+        if self.has_id(id):
+            item = self.ids_dict[id]
+            del self.ids_dict[id]
+            new_section_list = [item for item in self.section_item_list[item.section] if item.id != id]
+            self.section_item_list[item.section] = new_section_list
+
+    def get_number_of_sections(self):
+        return len(self.section_labels)
+
+    def _make_section_labels(self) -> List[str]:
+        return [section['aria-label'] for section in self.childrens]
+
+    def _make_entries_by_section(self) -> List[List[StructureItem]]:
+        output: List[List[StructureItem]] = []
+        for section_index, section in enumerate(self.childrens):
+            comp = ' > div.content > ul > li > div > div.mod-indent-outer > div > div.activityinstance > a'
+            activities = self.soup.select('#' + section['id'] + comp)
+            section_entries: List[StructureItem] = []
+            for activity in activities:
+                if not URLHandler.is_vpl_url(activity['href']):
+                    continue
+                id: int = int(URLHandler.parse_id(activity['href']))
+                title: str = activity.get_text().replace(' Laboratório Virtual de Programação', '')
+                section_entries.append(StructureItem(section_index, id, title))
+            output.append(section_entries)
+        return output
+
+    def _make_ids_dict(self) -> Dict[int, StructureItem]:
+        entries: Dict[int, StructureItem] = {}
+        for item_list in self.section_item_list:
+            for item in item_list:
+                entries[item.id] = item
+        return entries
+
+
+# formatting structure to list
+class Viewer:
+    def __init__(self, structure: Structure, url_handler: URLHandler, show_url: bool):
+        self.structure = structure
+        self.url_handler = url_handler
+        self.show_url = show_url
+
+    def list_section(self, index: int):
+        print("- %02d. %s" % (index, self.structure.section_labels[index]))
+        for item in self.structure.get_itens(section=index):
+            if self.show_url:
+                url = self.url_handler.view_vpl(item.id)
+                print('    - %d: [%s](%s)' % (item.id, item.title, url))
             else:
-                print("DIFERENTES")
+                print('    - %d: %s' % (item.id, item.title))
+
+    def list_all(self):
+        for i in range(self.structure.get_number_of_sections()):
+            self.list_section(i)
+
+
+class MoodleAPI:
+    default_timeout: int = 10
+
+    def __init__(self):
+        self.credentials = Credentials.load_credentials()
+        self.urlHandler = URLHandler(self.credentials.url, self.credentials.course)
+        self.browser = mechanize.Browser()
+        self.browser.set_handle_robots(False)
+        self.logged: bool = False
+
+    def open_url(self, url: str, data_files: Optional[Any] = None):
+        if data_files is None:
+            self.browser.open(url, timeout=MoodleAPI.default_timeout)
         else:
-            print("VPL não contido na seção %s" % args.section )
+            self.browser.open(url, timeout=MoodleAPI.default_timeout, data=data_files)
+        self._login()
 
-def main_update(args):
-    api = MoodleAPI(loadConfig(), args.section)
-    for file in args.questoes:
-        vpl = VPL().load(file)
-        qbTitle = MoodleAPI.getQByTitle(vpl.name) # @123
-        print("Recebendo questão.")
-        vplRetrived = api.getVpl(qbTitle)
+    def _login(self):
+        if self.logged:
+            return
+        try:
+            self.browser.select_form(action=(self.urlHandler.login()))
+            self.browser['username'] = self.credentials.username
+            self.browser['password'] = self.credentials.password
+            self.browser.submit()
+            self.logged = True
+        except mechanize.FormNotFoundError as _e:
+            pass
 
-        if vplRetrived:
-            if (not args.force) and vplRetrived == vpl:
-                print("Não há mudanças a serem feitas.")
+    def delete(self, id: int):
+        Bar.send("loading")
+        self.open_url(self.urlHandler.delete_vpl(id))
+        Bar.send("submitting")
+        try:
+            self.browser.select_form(action=self.urlHandler.delete_action())
+            self.browser.submit()
+        except mechanize.FormNotFoundError as e:
+            print("Erro no login", e)
+            exit(1)
+
+    def download_vpl(self, vplid: int) -> JsonVPL:
+        url = self.urlHandler.view_vpl(vplid)
+
+        Bar.send("opening")
+        self.open_url(url)
+        Bar.send("parsing")
+        soup = BeautifulSoup(self.browser.response().read(), 'html.parser')
+        arqs = soup.findAll('h4', {'id': lambda value: value and value.startswith("fileid")})
+        title = soup.find('a', {'href': self.browser.geturl()}).get_text()
+        descr = soup.find('div', {'class': 'box py-3 generalbox'}).find('div', {'class': 'no-overflow'}).get_text()
+
+        vpl = JsonVPL(title, descr)
+        for arq in arqs:
+            cont = soup.find('pre', {'id': 'code' + arq.get('id')})
+            file = JsonFile(name=arq.get_text(), contents=cont.get_text())
+            if arq.find_previous_sibling('h2').get_text() == "Arquivos requeridos":
+                vpl.required = file
             else:
-                print("Atualizando @%d, seção %s." % (qbTitle, args.section))
-                vpl.id = vplRetrived.id
-                api.update(vpl)
-        
+                vpl.executionFiles.append(file)
+        return vpl
 
-def main_push(args):
-    api = MoodleAPI(loadConfig(), args.section)
-    for file in args.questoes:
-        vpl = VPL().load(file)
-        qbTitle = MoodleAPI.getQByTitle(vpl.name) # @123
-        print("Recebendo questão.")
-        vplRetrived = api.getVpl(qbTitle)
+    def set_duedate(self, duedate: str):
+        year, month, day, hour, minute = duedate.split(":")
+        self.browser["duedate[year]"] = [year]
+        self.browser["duedate[month]"] = [month]
+        self.browser["duedate[day]"] = [day]
+        self.browser["duedate[hour]"] = [hour]
+        self.browser["duedate[minute]"] = [minute]
 
-        if vplRetrived:
-            if (not args.force) and vplRetrived == vpl:
-                print("Não há mudanças a serem feitas.")
-            else:
-                print("Atualizando @%d, seção %s." % (qbTitle, args.section))
-                vpl.id = vplRetrived.id
-                api.update(vpl)
+    def send_basic_info(self, url: str, vpl: JsonVPL, duedate: Optional[str] = None) -> int:
+        Bar.send("openning")
+        self.open_url(url)
+        Bar.send("filling")
+        try:
+            self.browser.select_form(action='modedit.php')
+        except mechanize.FormNotFoundError as _e:
+            print("erro no login")
+            exit(1)
+
+        self.browser['name'] = vpl.title
+        self.browser['introeditor[text]'] = vpl.description
+        if duedate is None:
+            self.browser["duedate[enabled]"] = 0
         else:
-            print("Inserindo questão @%d na seção %s." % (qbTitle, args.section))
-            api.addVpl(vpl)
+            self.set_duedate(duedate)
+
+        Bar.send("submitting")
+        self.browser.submit(name="submitbutton")
+
+        id = URLHandler.parse_id(self.browser.geturl())
+        return int(id)
+
+    def send_extra_files(self, vpl: JsonVPL, id: int):
+        self.send_execution_files(vpl, id)
+        self.send_required_files(vpl, id)
+        self.set_execution_options(id)
+
+    def send_execution_files(self, vpl: JsonVPL, id: int):
+        self.send_vpl_files(self.urlHandler.execution_files(id), vpl.executionFiles)
+
+    def send_required_files(self, vpl: JsonVPL, id: int):
+        if vpl.requiredFile:
+            self.send_vpl_files(self.urlHandler.required_files(id), [vpl.requiredFile])
+
+    def set_execution_options(self, id):
+        Bar.send("enabling")
+        self.open_url(self.urlHandler.execution_options(id))
+
+        try:
+            self.browser.select_form(action='executionoptions.php')
+        except mechanize.FormNotFoundError as _e:
+            print("erro no login")
+            exit(1)
+        self.browser['run'] = ["1"]
+        self.browser['evaluate'] = ["1"]
+        self.browser.submit()
+
+    def send_vpl_files(self, url: str, vpl_files: List[JsonFile]):
+        Bar.send("sending")
+
+        params = {'files': vpl_files, 'comments': ''}
+        files = json.dumps(params, default=self.__dumper, indent=2)
+        self.open_url(url, files)
+#        self.browser.open(url, data=files, timeout=MoodleAPI.default_timeout)
+        self._login()
+
+    def get_course_structure(self) -> Structure:
+        while(True):
+            try:
+                print("- Loading course structure")
+                Bar.open()
+                Bar.send("loading")
+                self.open_url(self.urlHandler.course())
+                Bar.send("parsing")
+                soup = BeautifulSoup(self.browser.response().read(), 'html.parser')
+                Bar.done()
+                return Structure(soup)
+            except mechanize.URLError as _e:
+                Bar.fail(": timeout")
+
+    @staticmethod
+    def __dumper(obj):
+        try:
+            return obj.to_json()
+        except AttributeError:
+            return obj.__dict__
 
 
-def main_rm(args):
-    api = MoodleAPI(loadConfig(), args.section)
-    for id in args.questoes:
+class Add:
+    def __init__(self, section: Optional[str], duedate: Optional[str], remote: bool, op_ignore: bool, op_update: bool):
+        self.section: Optional[int] = section
+        self.duedate = duedate
+        self.remote: bool = remote
+        self.op_ignore: bool = op_ignore
+        self.op_update: bool = op_update
+        self.on_going_id: Optional[int] = None  # used to assure return to id if add_new break in middle
+        self.structure = MoodleAPI().get_course_structure()
 
-        qid = -1
-        qStions = api.listByQuestions()
-        print(qStions)
+    def new_vpl(self, api: MoodleAPI, vpl: JsonVPL, section: int) -> int:
+        Bar.open()
+        url = api.urlHandler.new_vpl(section)
+        id = api.send_basic_info(url, vpl, self.duedate)
+        self.on_going_id = id
+        Bar.send("id:" + str(id))
+        api.send_extra_files(vpl, id)
+        self.on_going_id = None
+        Bar.done()
+        return id
 
-        if (str(id) in qStions) and (str(args.section) in qStions[str(id)].keys()):
-            qid = qStions[str(id)][str(args.section)]
+    def update(self, api: MoodleAPI, vpl: JsonVPL, id: int):
+        Bar.open()
+        url = api.urlHandler.update_vpl(id)
+        api.send_basic_info(url, vpl, self.duedate)
+        api.send_extra_files(vpl, id)
+        self.on_going_id = None
+        Bar.done()
 
-        if qid != -1:
-            print("Removendo @%s" % qid)
-            vTmp = VPL()
-            vTmp.id = qid
-            api.delete(vTmp)
+    def apply_action(self, vpl: JsonVPL, item: Optional[StructureItem]):
+        api = MoodleAPI()  # creating new browser for each attempt to avoid some weird timeout
+        if self.on_going_id:
+            print("    - Retrying: " + str(self.on_going_id))
+            self.update(api, vpl, self.on_going_id)
+        elif item is not None and self.op_update:
+            print("    - Updating: Label found in " + str(item.id) + ": " + item.title)
+            self.update(api, vpl, item.id)
+        elif item is not None and self.op_ignore:
+            print("    - Skipping: Label found in " + str(item.id) + ": " + item.title)
         else:
-            print("\"%s\" não encontrado." % id)
+            print("    - Creating: New entry with title: " + vpl.title)
+            id = self.new_vpl(api, vpl, self.section)
+            self.structure.add_entry(self.section, id, vpl.title)
+
+    def add_target(self, target: str):
+        print("- Target: " + target)
+        vpl = JsonVplLoader.load(target, self.remote)
+        itens_label_match = self.structure.search_by_label(StructureItem.parse_label(vpl.title), self.section)
+        item = None if len(itens_label_match) == 0 else itens_label_match[0]
+        while True:
+            try:
+                self.apply_action(vpl, item)
+                return
+            except mechanize.URLError as _e:
+                Bar.fail(": timeout")
 
 
-def main_list(args):
-    api = MoodleAPI(loadConfig(), "")
-    api.listAll()
+class Actions:
+
+    @staticmethod
+    def add(args):
+        action = Add(args.section, args.duedate, args.remote, args.ignore, args.update)
+        for target in args.targets:
+            action.add_target(target)
+
+    @staticmethod
+    def down(args):
+        args_ids: List[int] = args.ids
+        args_section: Optional[int] = args.section
+        args_all: bool = args.all
+        args_output: str = args.output
+
+        item_list: List[StructureItem] = []
+        api = MoodleAPI()
+        structure = api.get_course_structure()
+
+        if args_all:
+            item_list = structure.get_itens()
+        elif args_section:
+            item_list = structure.get_itens(args_section)
+        elif args_ids:
+            for id in args_ids:
+                if structure.has_id(id):
+                    item_list.append(structure.get_item(id))
+                else:
+                    print("    - id not found: ", id)
+
+        i = 0
+        while i < len(item_list):
+            item = item_list[i]
+            path = os.path.normpath(os.path.join(args_output, str(item.id) + ".json"))
+            print("- Saving id " + str(item.id))
+            print("    -", str(item))
+            try:
+                Bar.open()
+                data = api.download_vpl(item.id)
+                open(path, "w").write(str(data))
+                i += 1
+                Bar.done(": " + path)
+            except mechanize.URLError as _e:
+                Bar.fail(": timeout")
+
+    @staticmethod
+    def rm(args):
+        args_ids: List[int] = args.ids
+        args_section: Optional[int] = args.section
+        args_all: bool = args.all
+
+        item_list: List[StructureItem] = []
+        api = MoodleAPI()
+        structure = api.get_course_structure()
+
+        if args_all:
+            item_list = structure.get_itens()
+        elif args_section:
+            item_list = structure.get_itens(args_section)
+        elif args_ids:
+            for id in args_ids:
+                if structure.has_id(id):
+                    item_list.append(structure.get_item(id))
+                else:
+                    print("    - id not found", id)
+
+        i = 0
+        while i < len(item_list):
+            api = MoodleAPI()
+            item = item_list[i]
+            print("- Removing id " + str(item.id))
+            print("    -", str(item))
+            try:
+                Bar.open()
+                api.delete(item.id)
+                i += 1
+                Bar.done()
+            except mechanize.URLError as _e:
+                Bar.fail(": timeout")
+
+    @staticmethod
+    def list(args):
+        args_section: Optional[int] = args.section
+        args_url: bool = args.url
+        api = MoodleAPI()
+        viewer = Viewer(api.get_course_structure(), api.urlHandler, args_url)
+        if args_section:
+            viewer.list_section(args_section)
+        else:
+            viewer.list_all()
+
 
 def main():
+    p_config = argparse.ArgumentParser(add_help=False)
+    p_config.add_argument('-c', '--config', type=str, help="config file path")
+    p_config.add_argument('-t', '--timeout', type=int, help="config file path")
+
+    p_section = argparse.ArgumentParser(add_help=False)
+    p_section.add_argument('-s', '--section', metavar='SECTION', type=int, help="")
+
+    p_out = argparse.ArgumentParser(add_help=False)
+    p_out.add_argument('-o', '--output', type=str, default='.', action='store', help='Pasta de destino')
+
     desc = ("Gerenciar vpls do moodle de forma automatizada\n"
-            "Use \"./MoodleAPI.py comando -h\" para obter informações do comando específico.\n\n"
+            "Use \"./mapi comando -h\" para obter informações do comando específico.\n\n"
             "Exemplos:\n"
-            "    ./MoodleAPI.py add questao.txt -s 2   #Insere a questão contida em \"Questão.txt\" na seção 2 do curso informado no config.ini\n"
-            "    ./MoodleAPI.py list                   #Lista todas as questões cadastradas no curso e seus respectivos ids\n"
+            "    ./mapi.py add q.json -s 2   #Insere a questão contida em \"q.json\" na seção 2\n"
+            "    ./mapi.py list              #Lista todas as entradas do curso com seus ids\n"
             )
 
-    parser = argparse.ArgumentParser(
-        prog='mapi.py', description=desc, formatter_class=argparse.RawTextHelpFormatter)
+    parser = argparse.ArgumentParser(prog='mapi.py', description=desc, formatter_class=argparse.RawTextHelpFormatter)
+    parser.add_argument('-c', '--config', type=str, help="config file path")
 
-    subparsers = parser.add_subparsers(
-        title="subcommands", help="help for subcommand")
+    subparsers = parser.add_subparsers(title="subcommands", help="help for subcommand")
 
-    # add
-    desc_add = ("Enviar questões para o moodle \n"
-                "Ex.: ./mapi.py add questão.txt [questão.txt ...] [-s X]\n"
-                "insere as questões na seção X\n"
-                "-s para definir a seção\n"
-                "questão.txt - arquivo ou diretório contendo as questões a serem enviadas (Ex.: https://github.com/brunocarvalho7/moodleAPI \n"
-                )
+    parser_add = subparsers.add_parser('add', parents=[p_config, p_section], help="add")
+    parser_add.add_argument('targets', type=str, nargs='+', action='store', help='file, folder ou remote with lab')
+    parser_add.add_argument('-r', '--remote', action='store_true', help="Use remote repository")
+    parser_add.add_argument('-d', '--duedate', type=str, default=None, action='store', help='duedate yyyy:m:d:y:m')
+    group_add = parser_add.add_mutually_exclusive_group()
+    group_add.add_argument('-i', '--ignore', action='store_true', help="Ignore if found same label in section")
+    group_add.add_argument('-u', '--update', action='store_true', help="Update if found same label in section")
+    parser_add.set_defaults(func=Actions.add)
 
-    desc_update = ("Atualiza questões no moodle.\n"
-                "Ex.: ./mapi.py update questao [questao2.json] [questoes/] [-s X]\n"
-                "   questao: arquivo ou diretório contendo as questões a serem enviadas.\n"
-                "   -s: Especifica a seção (0: padrão)\n"
-                "   -f: Força atualização\n"
-                )
+    parser_list = subparsers.add_parser('list', parents=[p_config, p_section], help='list')
+    parser_list.add_argument('-u', '--url', action='store_true', help="Show urls")
+    parser_list.set_defaults(func=Actions.list)
 
-    desc_push = ("Enviar e atualizar questões no Moodle.\n"
-                "Ex.: ./mapi.py push questao [questao2.json] [questoes/] [-s 0]\n"
-                "   questao: arquivo ou diretório contendo as questões a serem enviadas.\n"
-                "   -s: Especifica a seção (0: padrão)\n"
-                )
+    parser_rm = subparsers.add_parser('rm', parents=[p_config], help="Remove from Moodle")
+    group_rm = parser_rm.add_mutually_exclusive_group()
+    group_rm.add_argument('-i', '--ids', type=int, metavar='ID', nargs='*', action='store', help='Índices ')
+    group_rm.add_argument('--all', action='store_true', help="Remove all vpls from course")
+    group_rm.add_argument('-s', '--section', metavar='SECTION', type=int, help="")
+    parser_rm.set_defaults(func=Actions.rm)
 
-    parser_add = subparsers.add_parser('add', help=desc_add)
-    parser_add.add_argument('questoes', type=str, nargs='+', action='store', help='Pacote de questões')
-    parser_add.add_argument('-s', '--section', metavar='COD_SECTION', default='0', type=str, action='store', help="Código da seção onde a questão será inserida")
-    parser_add.set_defaults(func=main_add)
-
-
-    parser_update = subparsers.add_parser('update', help=desc_update)
-    parser_update.add_argument('questoes', type=str, nargs='+', action='store', help='Pacote de questões')
-    parser_update.add_argument('-s', '--section', metavar='COD_SECTION', default='0', type=str, action='store', help="Código da seção onde a questão será atualizada")
-    parser_update.add_argument('-f', '--force', dest='force', action='store_true', help="Força atualização mesmo que não haja mudanças")
-    parser_update.set_defaults(force=False)
-    parser_update.set_defaults(func=main_update)
-
-    parser_list = subparsers.add_parser('list', help='Lista todas as questões cadastradas no curso e seus respectivos IDs.')
-    parser_list.set_defaults(func=main_list)
-
-    parser_push = subparsers.add_parser('push', help=desc_push)
-    parser_push.add_argument('questoes', type=str, nargs='+', action='store', help='Lista de questões')
-    parser_push.add_argument('-s', '--section', metavar='COD_SECTION', default='0', type=str, action='store', help="Código da seção de destino")
-    parser_push.add_argument('-f', '--force', dest='force', action='store_true', help="Força atualização mesmo que não haja mudanças")
-    parser_push.set_defaults(force=False)
-    parser_push.set_defaults(func=main_push)
-
-    # Possíveis novas features:
-    # rm (remover)
-    # ex.: ./mapi.py rm 188 -s 0
-    parser_rm = subparsers.add_parser('rm', help="Apagar do Moodle")
-    parser_rm.add_argument('questoes', type=str, nargs='+', action='store', help='Indices das questões')
-    parser_rm.add_argument('-s', '--section', metavar='COD_SECTION', default='0', type=str, action='store', help="Código da seção de destino")
-    parser_rm.set_defaults(func=main_rm)
-
-    # clone direto do repositório
-    # ex.: ./mapi.py clone 188 -o ../tmp/
-    # adicionar com: ./mapi.py push ../tmp/188
-    parser_clone = subparsers.add_parser('clone', help="Clonar questões do repositório")
-    parser_clone.add_argument('questoes', type=int, nargs='+', action='store', help='Index das questões a baixar')
-    parser_clone.add_argument('-o', '--output', type=str, default='', action='store', help='Pasta de destino')
-    parser_clone.set_defaults(func=main_clone)
-
-    
-
-    # DEBUG: Ver dados do VPL baixado
-    # parser_down = subparsers.add_parser('down', help='DEBUG: Download de vpl.')
-    # parser_down.add_argument('qid', type=int, metavar='qId', default='-1', action='store', help='URL da questão')
-    # parser_down.add_argument('-s', '--section', metavar='COD_SECTION', default='0', type=str, action='store', help="Código da seção onde a questão será inserida")
-    # parser_down.set_defaults(func=main_down)
-
-    # DEBUG: Comparar .json com questão web
-    # parser_compare = subparsers.add_parser('compare', help=desc_add)
-    # parser_compare.add_argument('questoes', type=str, nargs='+', action='store', help='Pacote de questões')
-    # parser_compare.add_argument('-s', '--section', metavar='COD_SECTION', default='0', type=str, action='store', help="Código da seção onde a questão será inserida")
-    # parser_compare.set_defaults(func=main_compare)
+    parser_down = subparsers.add_parser('down', parents=[p_config, p_out], help='Download de vpl.')
+    group_down = parser_down.add_mutually_exclusive_group()
+    group_down.add_argument('-i', '--ids', type=int, metavar='ID', nargs='*', action='store', help='Indices')
+    group_down.add_argument('--all', action='store_true', help="Remove all vpls from course")
+    group_down.add_argument('-s', '--section', metavar='SECTION', type=int, help="")
+    parser_down.set_defaults(func=Actions.down)
 
     args = parser.parse_args()
+    if args.config:
+        Credentials.config_path = args.config
+    if args.timeout:
+        MoodleAPI.default_timeout = args.timeout
 
-    if(len(sys.argv) > 1):
+    if len(sys.argv) > 1:
         args.func(args)
     else:
         parser.print_help()
+
 
 if __name__ == "__main__":
     main()

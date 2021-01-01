@@ -3,3 +3,6 @@ files.zip
 vpls.rar
 tmp/
 .vscode/
+.idea
+temp
+venv
