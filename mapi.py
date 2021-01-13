@@ -15,9 +15,10 @@ from types import SimpleNamespace  # to load json
 
 
 class URLHandler:
-    def __init__(self, url_base: str, course_id: str):
-        self._url_base: str = url_base
-        self.course_id: str = course_id
+    def __init__(self):
+        credentials: Credentials = Credentials.load_credentials()
+        self._url_base: str = credentials.url
+        self.course_id: str = credentials.course
 
     def __str__(self):
         return self._url_base + ":" + self.course_id
@@ -215,13 +216,9 @@ class StructureItem:
 
 # save course structure: sections, ids, titles
 class Structure:
-    def __init__(self, soup):
-        self.soup = soup
-        topics = soup.find('ul', {'class:', 'topics'})
-        self.childrens = topics.contents
-
-        self.section_item_list: List[List[StructureItem]] = self._make_entries_by_section()
-        self.section_labels: List[str] = self._make_section_labels()
+    def __init__(self, section_item_list: List[List[StructureItem]], section_labels: List[str]):
+        self.section_item_list: List[List[StructureItem]] = section_item_list
+        self.section_labels: List[str] = section_labels
         # redundant info
         self.ids_dict: Dict[int, StructureItem] = self._make_ids_dict()
 
@@ -264,14 +261,44 @@ class Structure:
     def get_number_of_sections(self):
         return len(self.section_labels)
 
-    def _make_section_labels(self) -> List[str]:
-        return [section['aria-label'] for section in self.childrens]
+    def _make_ids_dict(self) -> Dict[int, StructureItem]:
+        entries: Dict[int, StructureItem] = {}
+        for item_list in self.section_item_list:
+            for item in item_list:
+                entries[item.id] = item
+        return entries
 
-    def _make_entries_by_section(self) -> List[List[StructureItem]]:
+
+class StructureLoader:
+    @staticmethod
+    def load() -> Structure:
+        while True:
+            try:
+                api = MoodleAPI()
+                print("- Loading course structure")
+                Bar.open()
+                Bar.send("loading")
+                api.open_url(api.urlHandler.course())
+                Bar.send("parsing")
+                soup = BeautifulSoup(api.browser.response().read(), 'html.parser')
+                topics = soup.find('ul', {'class:', 'topics'})
+                section_item_list = StructureLoader._make_entries_by_section(soup, topics.contents)
+                section_labels: List[str] = StructureLoader._make_section_labels(topics.contents)
+                Bar.done()
+                return Structure(section_item_list, section_labels)
+            except mechanize.URLError as _e:
+                Bar.fail(": timeout")
+
+    @staticmethod
+    def _make_section_labels(childrens) -> List[str]:
+        return [section['aria-label'] for section in childrens]
+
+    @staticmethod
+    def _make_entries_by_section(soup, childrens) -> List[List[StructureItem]]:
         output: List[List[StructureItem]] = []
-        for section_index, section in enumerate(self.childrens):
+        for section_index, section in enumerate(childrens):
             comp = ' > div.content > ul > li > div > div.mod-indent-outer > div > div.activityinstance > a'
-            activities = self.soup.select('#' + section['id'] + comp)
+            activities = soup.select('#' + section['id'] + comp)
             section_entries: List[StructureItem] = []
             for activity in activities:
                 if not URLHandler.is_vpl_url(activity['href']):
@@ -282,19 +309,12 @@ class Structure:
             output.append(section_entries)
         return output
 
-    def _make_ids_dict(self) -> Dict[int, StructureItem]:
-        entries: Dict[int, StructureItem] = {}
-        for item_list in self.section_item_list:
-            for item in item_list:
-                entries[item.id] = item
-        return entries
-
 
 # formatting structure to list
 class Viewer:
-    def __init__(self, structure: Structure, url_handler: URLHandler, show_url: bool):
-        self.structure = structure
-        self.url_handler = url_handler
+    def __init__(self, show_url: bool):
+        self.url_handler = URLHandler()
+        self.structure = StructureLoader.load()
         self.show_url = show_url
 
     def list_section(self, index: int):
@@ -316,7 +336,7 @@ class MoodleAPI:
 
     def __init__(self):
         self.credentials = Credentials.load_credentials()
-        self.urlHandler = URLHandler(self.credentials.url, self.credentials.course)
+        self.urlHandler = URLHandler()
         self.browser = mechanize.Browser()
         self.browser.set_handle_robots(False)
         self.logged: bool = False
@@ -351,7 +371,7 @@ class MoodleAPI:
             print("Login error", e)
             exit(1)
 
-    def download_vpl(self, vplid: int) -> JsonVPL:
+    def download(self, vplid: int) -> JsonVPL:
         url = self.urlHandler.view_vpl(vplid)
 
         Bar.send("opening")
@@ -409,11 +429,11 @@ class MoodleAPI:
         self.set_execution_options(id)
 
     def send_execution_files(self, vpl: JsonVPL, id: int):
-        self.send_vpl_files(self.urlHandler.execution_files(id), vpl.executionFiles)
+        self._send_vpl_files(self.urlHandler.execution_files(id), vpl.executionFiles)
 
     def send_required_files(self, vpl: JsonVPL, id: int):
         if vpl.requiredFile:
-            self.send_vpl_files(self.urlHandler.required_files(id), [vpl.requiredFile])
+            self._send_vpl_files(self.urlHandler.required_files(id), [vpl.requiredFile])
 
     def set_execution_options(self, id):
         Bar.send("enabling")
@@ -428,7 +448,7 @@ class MoodleAPI:
         self.browser['evaluate'] = ["1"]
         self.browser.submit()
 
-    def send_vpl_files(self, url: str, vpl_files: List[JsonFile]):
+    def _send_vpl_files(self, url: str, vpl_files: List[JsonFile]):
         Bar.send("sending")
 
         params = {'files': vpl_files, 'comments': ''}
@@ -436,20 +456,6 @@ class MoodleAPI:
         self.open_url(url, files)
 #        self.browser.open(url, data=files, timeout=MoodleAPI.default_timeout)
         self._login()
-
-    def get_course_structure(self) -> Structure:
-        while True:
-            try:
-                print("- Loading course structure")
-                Bar.open()
-                Bar.send("loading")
-                self.open_url(self.urlHandler.course())
-                Bar.send("parsing")
-                soup = BeautifulSoup(self.browser.response().read(), 'html.parser')
-                Bar.done()
-                return Structure(soup)
-            except mechanize.URLError as _e:
-                Bar.fail(": timeout")
 
     @staticmethod
     def __dumper(obj):
@@ -461,13 +467,13 @@ class MoodleAPI:
 
 class Add:
     def __init__(self, section: Optional[str], duedate: Optional[str], remote: bool, op_ignore: bool, op_update: bool):
-        self.section: Optional[int] = section
+        self.section: Optional[int] = 0 if section is None else section
         self.duedate = duedate
         self.remote: bool = remote
         self.op_ignore: bool = op_ignore
         self.op_update: bool = op_update
         self.on_going_id: Optional[int] = None  # used to assure return to id if add_new break in middle
-        self.structure = MoodleAPI().get_course_structure()
+        self.structure = StructureLoader.load()
 
     def new_vpl(self, api: MoodleAPI, vpl: JsonVPL, section: int) -> int:
         Bar.open()
@@ -533,7 +539,7 @@ class Actions:
 
         item_list: List[StructureItem] = []
         api = MoodleAPI()
-        structure = api.get_course_structure()
+        structure = StructureLoader.load()
 
         if args_all:
             item_list = structure.get_itens()
@@ -554,7 +560,7 @@ class Actions:
             print("    -", str(item))
             try:
                 Bar.open()
-                data = api.download_vpl(item.id)
+                data = api.download(item.id)
                 open(path, "w").write(str(data))
                 i += 1
                 Bar.done(": " + path)
@@ -568,8 +574,7 @@ class Actions:
         args_all: bool = args.all
 
         item_list: List[StructureItem] = []
-        api = MoodleAPI()
-        structure = api.get_course_structure()
+        structure = StructureLoader.load()
 
         if args_all:
             item_list = structure.get_itens()
@@ -600,9 +605,8 @@ class Actions:
     def list(args):
         args_section: Optional[int] = args.section
         args_url: bool = args.url
-        api = MoodleAPI()
-        viewer = Viewer(api.get_course_structure(), api.urlHandler, args_url)
-        if args_section:
+        viewer = Viewer(args_url)
+        if args_section is not None:
             viewer.list_section(args_section)
         else:
             viewer.list_all()

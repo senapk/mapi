@@ -1,6 +1,10 @@
 {
-    "username": "sena",
-    "password": null,
-    "course": "516",
-    "url": "https://moodle.quixada.ufc.br"
+    "username": "seulogin",
+    "password": "seupassword",
+    "course": "3",
+    "remote": "https://raw.githubusercontent.com/qxcodefup/moodle/master/base",
+    "url": "https://moodle2.quixada.ufc.br"
 }
+
+
+
