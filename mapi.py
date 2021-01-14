@@ -444,8 +444,11 @@ class MoodleAPI:
         except mechanize.FormNotFoundError as _e:
             print("erro no login")
             exit(1)
+
         self.browser['run'] = ["1"]
+        self.browser['debug'] = ["1"]
         self.browser['evaluate'] = ["1"]
+        self.browser['automaticgrading'] = ["1"]
         self.browser.submit()
 
     def _send_vpl_files(self, url: str, vpl_files: List[JsonFile]):
@@ -529,6 +532,43 @@ class Actions:
         action = Add(args.section, args.duedate, args.remote, args.ignore, args.update)
         for target in args.targets:
             action.add_target(target)
+
+    @staticmethod
+    def update(args):
+        args_ids: List[int] = args.ids
+        args_section: Optional[int] = args.section
+        args_all: bool = args.all
+        args_exec_options = args.exec_options
+
+        item_list: List[StructureItem] = []
+        api = MoodleAPI()
+        structure = StructureLoader.load()
+
+        if args_all:
+            item_list = structure.get_itens()
+        elif args_section:
+            item_list = structure.get_itens(args_section)
+        elif args_ids:
+            for id in args_ids:
+                if structure.has_id(id):
+                    item_list.append(structure.get_item(id))
+                else:
+                    print("    - id not found: ", id)
+
+        if args_exec_options:
+            i = 0
+            while i < len(item_list):
+                item = item_list[i]
+                print("- Change execution options for " + str(item.id))
+                print("    -", str(item))
+                try:
+                    Bar.open()
+                    api = MoodleAPI()
+                    api.set_execution_options(item.id)
+                    i += 1
+                    Bar.done()
+                except mechanize.URLError as _e:
+                    Bar.fail(": timeout")
 
     @staticmethod
     def down(args):
@@ -615,13 +655,13 @@ class Actions:
 def main():
     p_config = argparse.ArgumentParser(add_help=False)
     p_config.add_argument('-c', '--config', type=str, help="config file path")
-    p_config.add_argument('-t', '--timeout', type=int, help="config file path")
+    p_config.add_argument('-t', '--timeout', type=int, help="max timeout to way moodle response")
 
     p_section = argparse.ArgumentParser(add_help=False)
     p_section.add_argument('-s', '--section', metavar='SECTION', type=int, help="")
 
     p_out = argparse.ArgumentParser(add_help=False)
-    p_out.add_argument('-o', '--output', type=str, default='.', action='store', help='Pasta de destino')
+    p_out.add_argument('-o', '--output', type=str, default='.', action='store', help='Output directory')
 
     desc = ("Gerenciar vpls do moodle de forma automatizada\n"
             "Use \"./mapi comando -h\" para obter informações do comando específico.\n\n"
@@ -651,16 +691,24 @@ def main():
     parser_rm = subparsers.add_parser('rm', parents=[p_config], help="Remove from Moodle")
     group_rm = parser_rm.add_mutually_exclusive_group()
     group_rm.add_argument('-i', '--ids', type=int, metavar='ID', nargs='*', action='store', help='')
-    group_rm.add_argument('--all', action='store_true', help="Remove all vpls from course")
+    group_rm.add_argument('--all', action='store_true', help="All vpls")
     group_rm.add_argument('-s', '--section', metavar='SECTION', type=int, help="")
     parser_rm.set_defaults(func=Actions.rm)
 
-    parser_down = subparsers.add_parser('down', parents=[p_config, p_out], help='Download de vpl.')
+    parser_down = subparsers.add_parser('down', parents=[p_config, p_out], help='Download vpls')
     group_down = parser_down.add_mutually_exclusive_group()
-    group_down.add_argument('-i', '--ids', type=int, metavar='ID', nargs='*', action='store', help='Indices')
-    group_down.add_argument('--all', action='store_true', help="Remove all vpls from course")
+    group_down.add_argument('-i', '--ids', type=int, metavar='ID', nargs='*', action='store', help='Indexes')
+    group_down.add_argument('--all', action='store_true', help="All vpls")
     group_down.add_argument('-s', '--section', metavar='SECTION', type=int, help="")
     parser_down.set_defaults(func=Actions.down)
+
+    parser_update = subparsers.add_parser('update', parents=[p_config], help='Update vpls')
+    group_update = parser_update.add_mutually_exclusive_group()
+    group_update.add_argument('-i', '--ids', type=int, metavar='ID', nargs='*', action='store', help='Indexes')
+    group_update.add_argument('--all', action='store_true', help="All vpls")
+    group_update.add_argument('-s', '--section', metavar='SECTION', type=int, help="")
+    parser_update.add_argument('--exec-options', action='store_true', help="enable all execution options")
+    parser_update.set_defaults(func=Actions.update)
 
     args = parser.parse_args()
     if args.config:
