@@ -2,22 +2,21 @@
 ## MoodleAPI
 API de publicação automática de VPL's no Moodle/Moodle2
 
-É necessário primeiro baixar a biblioteca [Mechanize](https://github.com/python-mechanize/mechanize)
+É necessário primeiro baixar as bibliotecas mechanize e bs4 usando o pip
 
-    pip install mechanize
-
-E tambem a biblioteca [Beautifulsoup4](https://pypi.org/project/beautifulsoup4/)
-
-	pip install beautifulsoup4
+```
+pip install mechanize bs4
+```
 
 ## Configurações do ambiente
-Crie um arquivo `.mapirc` no seu diretório de usuário (`~`) com o formato:
+Crie um arquivo `.mapirc` no seu diretório de usuário (`~`) com o formato.
 ```
 {
     "username": "seu_login",
     "password": "sua_senha",
     "course": "numero_do_curso",
-    "url": "url_do_moodle"
+    "url": "url_do_moodle",
+    "remote": "url do repositório remoto de questões"
 }
 ```
 
@@ -28,22 +27,48 @@ Exemplo:
     "username": "jiraya",
     "password": "espadaOlimpica123",
     "course": "516",
-    "url": "https://moodle2.quixada.ufc.br"
+    "url": "https://moodle2.quixada.ufc.br",
+    "remote": "https://raw.githubusercontent.com/qxcodefup/moodle/master/base"
 }
 ```
 
-Se já quiser, pode deixar o campo password com valor null `"password": null`. O script vai perguntar sua senha em cada operação.
+Se já quiser, pode deixar o campo password com valor null `"password": null`. O script vai perguntar sua senha em cada operação. Se preferir, você pode passar o arquivo de configuração por parâmetro:
+
 ```
-senha=sua_senha
+$ mapi.py -c configfile
 ```
 
-## Configurando o Moodle
-- Modificar o editor padrão do moodle para *Área de texto simples* **(Meu Perfil > Modificar Perfil > Preferências > editor de texto)**
+Para saber se está funcionando, você pode listar as questões do seu curso.
 
-Obs.: Já compatível com Moodle2.
+```
+$ mapi.py -c configfile list
+```
+
+Para adicionar uma questão que já está no repositório remoto, basta ter colocado o remote do [qxcodefup](https://github.com/qxcodefup/moodle) no config e chamar o script com a operação `add` e a opção `--remote` ou apenas `-r`. No repositório, cada questão tem um label único no formato de `@xxx`.
+
+![](resources/exemplo.png)
+
+Para enviar a questão `@192 A idade de Dona Mônica` utilizando o repositório remoto, para a seção 5 do seu curso do moodle use:
+
+```
+$ mapi.py add 195 --section 5 --remote
+```
+
+Ou de forma resumida
+
+```
+$ mapi.py add 195 -s 5 -r
+```
+
+É possível enviar várias questões ao mesmo tempo com o mesmo comando. Para enviar 002, 003, 004 e 006 para a seção 5:
+
+```
+$ mapi.py add 002 003 004 006 -s 5 -r
+```
+
 
 ## Modelo de questões
-O caminho do arquivo que contém as questões a serem publicadas no Moodle.
+Se quiser criar suas próprias questões, deve criar um arquivo json com as informações necessárias usando o modelo a seguir.
 
 ```json
 {
@@ -77,14 +102,4 @@ Se não houver arquivo requerido, ponha `"requiredFile" = null`.
 | ./mapi.py list | Lista todas as questões cadastradas no curso e seus respectivos IDs. |
 
 Obs¹: Arquivos no formato do [modelo de questões](#modelo-de-questões) ou pastas seguindo as [estruturas de diretório de uma questão](#estruturas-de-diretório-de-uma-questão) são aceitos.
-
-## Estruturas de diretório de uma questão
-- Readme.md
-    - A primeira linha deve ter o título da questão.
-    - Se houver um `index`, ele deve ser a primeira palavra e iniciar com @
-    - Ex: `@017 #01_sel Quem é o irmão mais velho?`
-        - O `index` nesse caso é `@017`
-            - Esse dado é utilizado para atualizar as questões no moodle.
-        - A descrição da questão será dada pelo conteúdo do Readme.
-        - A conversão do markdown para html é feita pelo Pandoc.
 

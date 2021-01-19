@@ -181,8 +181,8 @@ class Bar:
         print("    - [ ", end='', flush=True)
 
     @staticmethod
-    def send(text: str):
-        print(text.center(15, '.') + " ", end='', flush=True)
+    def send(text: str, fill: int = 0):
+        print(text.center(fill, '.') + " ", end='', flush=True)
 
     @staticmethod
     def done(text=""):
@@ -272,22 +272,25 @@ class Structure:
 class StructureLoader:
     @staticmethod
     def load() -> Structure:
+        api = MoodleAPI()
+        print("- Loading course structure")
+        Bar.open()
+        Bar.send("load")
         while True:
             try:
-                api = MoodleAPI()
-                print("- Loading course structure")
-                Bar.open()
-                Bar.send("loading")
                 api.open_url(api.urlHandler.course())
-                Bar.send("parsing")
-                soup = BeautifulSoup(api.browser.response().read(), 'html.parser')
-                topics = soup.find('ul', {'class:', 'topics'})
-                section_item_list = StructureLoader._make_entries_by_section(soup, topics.contents)
-                section_labels: List[str] = StructureLoader._make_section_labels(topics.contents)
-                Bar.done()
-                return Structure(section_item_list, section_labels)
-            except mechanize.URLError as _e:
-                Bar.fail(": timeout")
+                break
+            except mechanize.URLError as e:
+                Bar.send("!", 0)
+                api = MoodleAPI()
+
+        Bar.send("parse")
+        soup = BeautifulSoup(api.browser.response().read(), 'html.parser')
+        topics = soup.find('ul', {'class:', 'topics'})
+        section_item_list = StructureLoader._make_entries_by_section(soup, topics.contents)
+        section_labels: List[str] = StructureLoader._make_section_labels(topics.contents)
+        Bar.done()
+        return Structure(section_item_list, section_labels)
 
     @staticmethod
     def _make_section_labels(childrens) -> List[str]:
@@ -339,44 +342,46 @@ class MoodleAPI:
         self.urlHandler = URLHandler()
         self.browser = mechanize.Browser()
         self.browser.set_handle_robots(False)
-        self.logged: bool = False
-
-    def open_url(self, url: str, data_files: Optional[Any] = None):
-        if data_files is None:
-            self.browser.open(url, timeout=MoodleAPI.default_timeout)
-        else:
-            self.browser.open(url, timeout=MoodleAPI.default_timeout, data=data_files)
         self._login()
 
+
+    def  open_url(self, url: str, data_files: Optional[Any] = None):
+        if MoodleAPI.default_timeout != 0:
+            if data_files is None:
+                self.browser.open(url, timeout=MoodleAPI.default_timeout)
+            else:
+                self.browser.open(url, timeout=MoodleAPI.default_timeout, data=data_files)
+        else:
+            if data_files is None:
+                self.browser.open(url)
+            else:
+                self.browser.open(url, data=data_files)
+
     def _login(self):
-        if self.logged:
-            return
-        try:
-            self.browser.select_form(action=(self.urlHandler.login()))
-            self.browser['username'] = self.credentials.username
-            self.browser['password'] = self.credentials.password
-            self.browser.submit()
-            self.logged = True
-        except mechanize.FormNotFoundError as _e:
-            pass
+        self.browser.open(self.urlHandler.login())
+        self.browser.select_form(nr=0)
+        self.browser['username'] = self.credentials.username
+        self.browser['password'] = self.credentials.password
+        self.browser.submit()
+        if self.browser.geturl() == self.urlHandler.login():
+            print("Erro de login, verifique login e senha")
+            exit(0)
 
     def delete(self, id: int):
-        Bar.send("loading")
+        Bar.send("load")
         self.open_url(self.urlHandler.delete_vpl(id))
-        Bar.send("submitting")
-        try:
-            self.browser.select_form(action=self.urlHandler.delete_action())
-            self.browser.submit()
-        except mechanize.FormNotFoundError as e:
-            print("Login error", e)
-            exit(1)
+        Bar.send("submit")
+
+        self.browser.select_form(action=self.urlHandler.delete_action())
+        self.browser.submit()
+
 
     def download(self, vplid: int) -> JsonVPL:
         url = self.urlHandler.view_vpl(vplid)
 
-        Bar.send("opening")
+        Bar.send("open")
         self.open_url(url)
-        Bar.send("parsing")
+        Bar.send("parse")
         soup = BeautifulSoup(self.browser.response().read(), 'html.parser')
         arqs = soup.findAll('h4', {'id': lambda value: value and value.startswith("fileid")})
         title = soup.find('a', {'href': self.browser.geturl()}).get_text()
@@ -401,64 +406,50 @@ class MoodleAPI:
         self.browser["duedate[minute]"] = [minute]
 
     def send_basic_info(self, url: str, vpl: JsonVPL, duedate: Optional[str] = None) -> int:
-        Bar.send("openning")
+        Bar.send("1")
         self.open_url(url)
-        Bar.send("filling")
-        try:
-            self.browser.select_form(action='modedit.php')
-        except mechanize.FormNotFoundError as _e:
-            print("erro no login")
-            exit(1)
 
+        Bar.send("2")
+        self.browser.select_form(action='modedit.php')
         self.browser['name'] = vpl.title
         self.browser['introeditor[text]'] = vpl.description
+
         if duedate is None:
             self.browser["duedate[enabled]"] = 0
         else:
             self.set_duedate(duedate)
 
-        Bar.send("submitting")
+        #Bar.send("submit")
+        Bar.send("3")
         self.browser.submit(name="submitbutton")
-
         id = URLHandler.parse_id(self.browser.geturl())
         return int(id)
 
-    def send_extra_files(self, vpl: JsonVPL, id: int):
-        self.send_execution_files(vpl, id)
-        self.send_required_files(vpl, id)
-        self.set_execution_options(id)
+    def _send_vpl_files(self, url: str, vpl_files: List[JsonFile]):
+        params = {'files': vpl_files, 'comments': ''}
+        files = json.dumps(params, default=self.__dumper, indent=2)
+        self.open_url(url, files)
 
-    def send_execution_files(self, vpl: JsonVPL, id: int):
+
+    def send_files(self, vpl: JsonVPL, id: int):
         self._send_vpl_files(self.urlHandler.execution_files(id), vpl.executionFiles)
-
-    def send_required_files(self, vpl: JsonVPL, id: int):
         if vpl.requiredFile:
             self._send_vpl_files(self.urlHandler.required_files(id), [vpl.requiredFile])
 
     def set_execution_options(self, id):
-        Bar.send("enabling")
         self.open_url(self.urlHandler.execution_options(id))
 
-        try:
-            self.browser.select_form(action='executionoptions.php')
-        except mechanize.FormNotFoundError as _e:
-            print("erro no login")
-            exit(1)
+        self.browser.select_form(action='executionoptions.php')
 
         self.browser['run'] = ["1"]
         self.browser['debug'] = ["1"]
         self.browser['evaluate'] = ["1"]
+        # self.browser.submit()
+        #
+        # self.browser.select_form(action='executionoptions.php')
         self.browser['automaticgrading'] = ["1"]
         self.browser.submit()
 
-    def _send_vpl_files(self, url: str, vpl_files: List[JsonFile]):
-        Bar.send("sending")
-
-        params = {'files': vpl_files, 'comments': ''}
-        files = json.dumps(params, default=self.__dumper, indent=2)
-        self.open_url(url, files)
-#        self.browser.open(url, data=files, timeout=MoodleAPI.default_timeout)
-        self._login()
 
     @staticmethod
     def __dumper(obj):
@@ -475,42 +466,60 @@ class Add:
         self.remote: bool = remote
         self.op_ignore: bool = op_ignore
         self.op_update: bool = op_update
-        self.on_going_id: Optional[int] = None  # used to assure return to id if add_new break in middle
         self.structure = StructureLoader.load()
 
-    def new_vpl(self, api: MoodleAPI, vpl: JsonVPL, section: int) -> int:
-        Bar.open()
-        url = api.urlHandler.new_vpl(section)
-        id = api.send_basic_info(url, vpl, self.duedate)
-        self.on_going_id = id
-        Bar.send("id:" + str(id))
-        api.send_extra_files(vpl, id)
-        self.on_going_id = None
-        Bar.done()
+    def send_basic(self, api: MoodleAPI, vpl: JsonVPL, url: str) -> int:
+        Bar.send("description")
+        while True:
+            try:
+                id = api.send_basic_info(url, vpl, self.duedate)
+                break
+            except mechanize.URLError as e:
+                api = MoodleAPI()
+                Bar.send("!", 0)
         return id
 
-    def update(self, api: MoodleAPI, vpl: JsonVPL, id: int):
-        Bar.open()
-        url = api.urlHandler.update_vpl(id)
-        api.send_basic_info(url, vpl, self.duedate)
-        api.send_extra_files(vpl, id)
-        self.on_going_id = None
-        Bar.done()
+    def update_extra(self, api: MoodleAPI, vpl: JsonVPL, id: int):
+        Bar.send("enable")
+        while True:
+            try:
+                api.set_execution_options(id)
+                break
+            except mechanize.URLError as e:
+                api = MoodleAPI()
+                Bar.send("!", 0)
+
+
+        Bar.send("send")
+        while True:
+            try:
+                api.send_files(vpl, id)
+                break
+            except mechanize.URLError as e:
+                api = MoodleAPI()
+                Bar.send("!", 0)
 
     def apply_action(self, vpl: JsonVPL, item: Optional[StructureItem]):
         api = MoodleAPI()  # creating new browser for each attempt to avoid some weird timeout
-        if self.on_going_id:
-            print("    - Retrying: " + str(self.on_going_id))
-            self.update(api, vpl, self.on_going_id)
-        elif item is not None and self.op_update:
+
+        if item is not None and self.op_update:
             print("    - Updating: Label found in " + str(item.id) + ": " + item.title)
-            self.update(api, vpl, item.id)
+            url = api.urlHandler.update_vpl(item.id)
+            Bar.open()
+            self.send_basic(api, vpl, url)
+            self.update_extra(api, vpl, item.id)
+            Bar.done()
         elif item is not None and self.op_ignore:
             print("    - Skipping: Label found in " + str(item.id) + ": " + item.title)
         else:
             print("    - Creating: New entry with title: " + vpl.title)
-            id = self.new_vpl(api, vpl, self.section)
+            Bar.open()
+            url = api.urlHandler.new_vpl(self.section)
+            id = self.send_basic(api, vpl, url)
+            Bar.send(str(id))
+            self.update_extra(api, vpl, id)
             self.structure.add_entry(self.section, id, vpl.title)
+            Bar.done()
 
     def add_target(self, target: str):
         print("- Target: " + target)
@@ -522,7 +531,7 @@ class Add:
                 self.apply_action(vpl, item)
                 return
             except mechanize.URLError as _e:
-                Bar.fail(": timeout")
+                Bar.fail(":" + str(_e))
 
 
 class Actions:
@@ -653,9 +662,8 @@ class Actions:
 
 
 def main():
-    p_config = argparse.ArgumentParser(add_help=False)
-    p_config.add_argument('-c', '--config', type=str, help="config file path")
-    p_config.add_argument('-t', '--timeout', type=int, help="max timeout to way moodle response")
+#    p_config = argparse.ArgumentParser(add_help=False)
+    #p_config.add_argument('-c', '--config', type=str, help="config file path")
 
     p_section = argparse.ArgumentParser(add_help=False)
     p_section.add_argument('-s', '--section', metavar='SECTION', type=int, help="")
@@ -672,10 +680,11 @@ def main():
 
     parser = argparse.ArgumentParser(prog='mapi.py', description=desc, formatter_class=argparse.RawTextHelpFormatter)
     parser.add_argument('-c', '--config', type=str, help="config file path")
+    parser.add_argument('-t', '--timeout', type=int, help="max timeout to way moodle response")
 
     subparsers = parser.add_subparsers(title="subcommands", help="help for subcommand")
 
-    parser_add = subparsers.add_parser('add', parents=[p_config, p_section], help="add")
+    parser_add = subparsers.add_parser('add', parents=[p_section], help="add")
     parser_add.add_argument('targets', type=str, nargs='+', action='store', help='file, folder ou remote with lab')
     parser_add.add_argument('-r', '--remote', action='store_true', help="Use remote repository")
     parser_add.add_argument('-d', '--duedate', type=str, default=None, action='store', help='duedate yyyy:m:d:y:m')
@@ -684,25 +693,25 @@ def main():
     group_add.add_argument('-u', '--update', action='store_true', help="Update if found same label in section")
     parser_add.set_defaults(func=Actions.add)
 
-    parser_list = subparsers.add_parser('list', parents=[p_config, p_section], help='list')
+    parser_list = subparsers.add_parser('list', parents=[p_section], help='list')
     parser_list.add_argument('-u', '--url', action='store_true', help="Show urls")
     parser_list.set_defaults(func=Actions.list)
 
-    parser_rm = subparsers.add_parser('rm', parents=[p_config], help="Remove from Moodle")
+    parser_rm = subparsers.add_parser('rm', help="Remove from Moodle")
     group_rm = parser_rm.add_mutually_exclusive_group()
     group_rm.add_argument('-i', '--ids', type=int, metavar='ID', nargs='*', action='store', help='')
     group_rm.add_argument('--all', action='store_true', help="All vpls")
     group_rm.add_argument('-s', '--section', metavar='SECTION', type=int, help="")
     parser_rm.set_defaults(func=Actions.rm)
 
-    parser_down = subparsers.add_parser('down', parents=[p_config, p_out], help='Download vpls')
+    parser_down = subparsers.add_parser('down', parents=[p_out], help='Download vpls')
     group_down = parser_down.add_mutually_exclusive_group()
     group_down.add_argument('-i', '--ids', type=int, metavar='ID', nargs='*', action='store', help='Indexes')
     group_down.add_argument('--all', action='store_true', help="All vpls")
     group_down.add_argument('-s', '--section', metavar='SECTION', type=int, help="")
     parser_down.set_defaults(func=Actions.down)
 
-    parser_update = subparsers.add_parser('update', parents=[p_config], help='Update vpls')
+    parser_update = subparsers.add_parser('update', help='Update vpls')
     group_update = parser_update.add_mutually_exclusive_group()
     group_update.add_argument('-i', '--ids', type=int, metavar='ID', nargs='*', action='store', help='Indexes')
     group_update.add_argument('--all', action='store_true', help="All vpls")
