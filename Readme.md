@@ -1,6 +1,5 @@
 <!--TOC_BEGIN-->
-- [MoodleAPI](#moodleapi)
-- [Configurações do ambiente](#configurações-do-ambiente)
+- [Configurações da ferramenta](#configurações-da-ferramenta)
 - [Configurando acesso ao curso](#configurando-acesso-ao-curso)
 - [Listando estrutura de um curso](#listando-estrutura-de-um-curso)
 - [Adicionando](#adicionando)
@@ -12,14 +11,14 @@
 - [Criando suas próprias questões](#criando-suas-próprias-questões)
 <!--TOC_END-->
 
-## MoodleAPI
+# MoodleAPI
 
 
 API de publicação automática de VPL's no Moodle/Moodle2
 
 É necessário primeiro baixar as bibliotecas mechanize e bs4 usando o pip
 
-## Configurações do ambiente
+## Configurações da ferramenta
 Instale o python e o pip. Depois instale as dependências com
 
 ```
