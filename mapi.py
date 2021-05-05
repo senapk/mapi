@@ -11,7 +11,6 @@ import sys
 import getpass  # get pass
 import pathlib
 import requests
-from types import SimpleNamespace  # to load json
 
 
 class URLHandler:
@@ -35,33 +34,36 @@ class URLHandler:
     def delete_action(self):
         return self._url_base + "/course/mod.php"
 
-    def delete_vpl(self, id: int):
-        return self.delete_action() + "?sr=0&delete=" + str(id)
+    def delete_vpl(self, qid: int):
+        return self.delete_action() + "?sr=0&delete=" + str(qid)
+
+    def keep_files(self, qid: int):
+        return self._url_base + '/mod/vpl/forms/executionkeepfiles.php?id=' + str(qid)
 
     def new_vpl(self, section: int):
         return self._url_base + "/course/modedit.php?add=vpl&type=&course=" + self.course_id + "&section=" + \
                str(section) + "&return=0&sr=0 "
 
-    def view_vpl(self, id: int):
-        return self._url_base + '/mod/vpl/view.php?id=' + str(id)
+    def view_vpl(self, qid: int):
+        return self._url_base + '/mod/vpl/view.php?id=' + str(qid)
 
-    def update_vpl(self, id: int):
-        return self._url_base + '/course/modedit.php?update=' + str(id)
+    def update_vpl(self, qid: int):
+        return self._url_base + '/course/modedit.php?update=' + str(qid)
 
-    def new_test(self, id: int):
-        return self._url_base + "/mod/vpl/forms/testcasesfile.php?id=" + str(id) + "&edit=3"
+    def new_test(self, qid: int):
+        return self._url_base + "/mod/vpl/forms/testcasesfile.php?id=" + str(qid) + "&edit=3"
 
     # def test_save(self, id: int):
     #     return self._url_base + "/mod/vpl/forms/testcasesfile.json.php?id=" + str(id) + "&action=save"
 
-    def execution_files(self, id: int):
-        return self._url_base + '/mod/vpl/forms/executionfiles.json.php?id=' + str(id) + '&action=save'
+    def execution_files(self, qid: int):
+        return self._url_base + '/mod/vpl/forms/executionfiles.json.php?id=' + str(qid) + '&action=save'
 
-    def required_files(self, id: int):
-        return self._url_base + '/mod/vpl/forms/requiredfiles.json.php?id=' + str(id) + '&action=save'
+    def required_files(self, qid: int):
+        return self._url_base + '/mod/vpl/forms/requiredfiles.json.php?id=' + str(qid) + '&action=save'
 
-    def execution_options(self, id: int):
-        return self._url_base + "/mod/vpl/forms/executionoptions.php?id=" + str(id)
+    def execution_options(self, qid: int):
+        return self._url_base + "/mod/vpl/forms/executionoptions.php?id=" + str(qid)
 
     @staticmethod
     def parse_id(url) -> str:
@@ -133,6 +135,7 @@ class JsonVPL:
         self.description: str = description
         self.executionFiles: List[JsonFile] = []
         self.requiredFile: Optional[JsonFile] = None
+        self.keep_size: int = 0
         if tests is not None:
             self.set_test_cases(tests)
 
@@ -153,7 +156,14 @@ class JsonVPL:
 class JsonVplLoader:
     @staticmethod
     def _load_from_string(text: str) -> JsonVPL:
-        return json.loads(text, object_hook=lambda d: SimpleNamespace(**d))
+        data = json.loads(text)
+        vpl = JsonVPL(data["title"], data["description"])
+        for f in data["executionFiles"]:
+            vpl.executionFiles.append(JsonFile(f["name"], f["contents"]))
+        if data["requiredFile"] is not None:
+            vpl.requiredFile = JsonFile(data["requiredFile"]["name"], data["requiredFile"]["contents"])
+        vpl.keep_size = data["keep_size"]
+        return vpl
 
     # remote is like https://raw.githubusercontent.com/qxcodefup/moodle/master/base/
     @staticmethod
@@ -194,9 +204,9 @@ class Bar:
 
 
 class StructureItem:
-    def __init__(self, section: int, id: int, title: str):
+    def __init__(self, section: int, qid: int, title: str):
         self.section: int = section
-        self.id: int = id
+        self.id: int = qid
         self.title: str = title
         self.label: str = StructureItem.parse_label(title)
 
@@ -222,11 +232,11 @@ class Structure:
         # redundant info
         self.ids_dict: Dict[int, StructureItem] = self._make_ids_dict()
 
-    def add_entry(self, section: int, id: int, title: str):
-        if id not in self.ids_dict.keys():
-            item = StructureItem(section, id, title)
+    def add_entry(self, section: int, qid: int, title: str):
+        if qid not in self.ids_dict.keys():
+            item = StructureItem(section, qid, title)
             self.section_item_list[section].append(item)
-            self.ids_dict[id] = item
+            self.ids_dict[qid] = item
 
     def search_by_label(self, label: str, section: Optional[int] = None) -> List[StructureItem]:
         if section is None:
@@ -243,19 +253,19 @@ class Structure:
             return list(self.ids_dict.values())
         return self.section_item_list[section]
 
-    def get_item(self, id: int) -> StructureItem:
-        return self.ids_dict[id]
+    def get_item(self, qid: int) -> StructureItem:
+        return self.ids_dict[qid]
 
-    def has_id(self, id: int, section: Optional[int] = None) -> bool:
+    def has_id(self, qid: int, section: Optional[int] = None) -> bool:
         if section is None:
-            return id in self.ids_dict.keys()
-        return id in self.get_id_list(section)
+            return qid in self.ids_dict.keys()
+        return qid in self.get_id_list(section)
 
-    def rm_item(self, id: int):
-        if self.has_id(id):
-            item = self.ids_dict[id]
-            del self.ids_dict[id]
-            new_section_list = [item for item in self.section_item_list[item.section] if item.id != id]
+    def rm_item(self, qid: int):
+        if self.has_id(qid):
+            item = self.ids_dict[qid]
+            del self.ids_dict[qid]
+            new_section_list = [item for item in self.section_item_list[item.section] if item.id != qid]
             self.section_item_list[item.section] = new_section_list
 
     def get_number_of_sections(self):
@@ -280,7 +290,7 @@ class StructureLoader:
             try:
                 api.open_url(api.urlHandler.course())
                 break
-            except mechanize.URLError as e:
+            except mechanize.URLError as _e:
                 Bar.send("!", 0)
                 api = MoodleAPI()
 
@@ -306,9 +316,9 @@ class StructureLoader:
             for activity in activities:
                 if not URLHandler.is_vpl_url(activity['href']):
                     continue
-                id: int = int(URLHandler.parse_id(activity['href']))
+                qid: int = int(URLHandler.parse_id(activity['href']))
                 title: str = activity.get_text().replace(' Laboratório Virtual de Programação', '')
-                section_entries.append(StructureItem(section_index, id, title))
+                section_entries.append(StructureItem(section_index, qid, title))
             output.append(section_entries)
         return output
 
@@ -344,8 +354,7 @@ class MoodleAPI:
         self.browser.set_handle_robots(False)
         self._login()
 
-
-    def  open_url(self, url: str, data_files: Optional[Any] = None):
+    def open_url(self, url: str, data_files: Optional[Any] = None):
         if MoodleAPI.default_timeout != 0:
             if data_files is None:
                 self.browser.open(url, timeout=MoodleAPI.default_timeout)
@@ -367,14 +376,13 @@ class MoodleAPI:
             print("Erro de login, verifique login e senha")
             exit(0)
 
-    def delete(self, id: int):
+    def delete(self, qid: int):
         Bar.send("load")
-        self.open_url(self.urlHandler.delete_vpl(id))
+        self.open_url(self.urlHandler.delete_vpl(qid))
         Bar.send("submit")
 
         self.browser.select_form(action=self.urlHandler.delete_action())
         self.browser.submit()
-
 
     def download(self, vplid: int) -> JsonVPL:
         url = self.urlHandler.view_vpl(vplid)
@@ -419,25 +427,30 @@ class MoodleAPI:
         else:
             self.set_duedate(duedate)
 
-        #Bar.send("submit")
         Bar.send("3")
         self.browser.submit(name="submitbutton")
-        id = URLHandler.parse_id(self.browser.geturl())
-        return int(id)
+        qid = URLHandler.parse_id(self.browser.geturl())
+        return int(qid)
 
     def _send_vpl_files(self, url: str, vpl_files: List[JsonFile]):
         params = {'files': vpl_files, 'comments': ''}
         files = json.dumps(params, default=self.__dumper, indent=2)
         self.open_url(url, files)
 
+    def set_keep(self, qid: int, keep_size: int):
+        self.open_url(self.urlHandler.keep_files(qid))
+        self.browser.select_form(nr=0)
+        for index in range(4, 4 + keep_size):
+            self.browser["keepfile" + str(index)] = ["1"]
+        self.browser.submit()
 
-    def send_files(self, vpl: JsonVPL, id: int):
-        self._send_vpl_files(self.urlHandler.execution_files(id), vpl.executionFiles)
+    def send_files(self, vpl: JsonVPL, qid: int):
+        self._send_vpl_files(self.urlHandler.execution_files(qid), vpl.executionFiles)
         if vpl.requiredFile:
-            self._send_vpl_files(self.urlHandler.required_files(id), [vpl.requiredFile])
+            self._send_vpl_files(self.urlHandler.required_files(qid), [vpl.requiredFile])
 
-    def set_execution_options(self, id):
-        self.open_url(self.urlHandler.execution_options(id))
+    def set_execution_options(self, qid):
+        self.open_url(self.urlHandler.execution_options(qid))
 
         self.browser.select_form(action='executionoptions.php')
 
@@ -450,7 +463,6 @@ class MoodleAPI:
         self.browser['automaticgrading'] = ["1"]
         self.browser.submit()
 
-
     @staticmethod
     def __dumper(obj):
         try:
@@ -460,42 +472,57 @@ class MoodleAPI:
 
 
 class Add:
-    def __init__(self, section: Optional[str], duedate: Optional[str], remote: bool, op_ignore: bool, op_update: bool):
+    def __init__(self, section: Optional[int], duedate: Optional[str], remote: bool, op_ignore: bool, op_update: bool,
+                 structure=None):
         self.section: Optional[int] = 0 if section is None else section
         self.duedate = duedate
         self.remote: bool = remote
         self.op_ignore: bool = op_ignore
         self.op_update: bool = op_update
-        self.structure = StructureLoader.load()
+        if structure is None:
+            self.structure = StructureLoader.load()
+        else:
+            self.structure = structure
 
     def send_basic(self, api: MoodleAPI, vpl: JsonVPL, url: str) -> int:
         Bar.send("description")
         while True:
             try:
-                id = api.send_basic_info(url, vpl, self.duedate)
+                qid = api.send_basic_info(url, vpl, self.duedate)
                 break
-            except mechanize.URLError as e:
+            except mechanize.URLError as _e:
                 api = MoodleAPI()
                 Bar.send("!", 0)
-        return id
+        return qid
 
-    def update_extra(self, api: MoodleAPI, vpl: JsonVPL, id: int):
+    @staticmethod
+    def set_keep(api: MoodleAPI, qid: int, keep_size: int):
+        Bar.send("setkeep")
+        while True:
+            try:
+                api.set_keep(qid, keep_size)
+                break
+            except mechanize.URLError as _e:
+                api = MoodleAPI()
+                Bar.send("!", 0)
+
+    @staticmethod
+    def update_extra(api: MoodleAPI, vpl: JsonVPL, qid: int):
         Bar.send("enable")
         while True:
             try:
-                api.set_execution_options(id)
+                api.set_execution_options(qid)
                 break
-            except mechanize.URLError as e:
+            except mechanize.URLError as _e:
                 api = MoodleAPI()
                 Bar.send("!", 0)
-
 
         Bar.send("send")
         while True:
             try:
-                api.send_files(vpl, id)
+                api.send_files(vpl, qid)
                 break
-            except mechanize.URLError as e:
+            except mechanize.URLError as _e:
                 api = MoodleAPI()
                 Bar.send("!", 0)
 
@@ -508,6 +535,7 @@ class Add:
             Bar.open()
             self.send_basic(api, vpl, url)
             self.update_extra(api, vpl, item.id)
+            self.set_keep(api, item.id, vpl.keep_size)
             Bar.done()
         elif item is not None and self.op_ignore:
             print("    - Skipping: Label found in " + str(item.id) + ": " + item.title)
@@ -515,10 +543,11 @@ class Add:
             print("    - Creating: New entry with title: " + vpl.title)
             Bar.open()
             url = api.urlHandler.new_vpl(self.section)
-            id = self.send_basic(api, vpl, url)
-            Bar.send(str(id))
-            self.update_extra(api, vpl, id)
-            self.structure.add_entry(self.section, id, vpl.title)
+            qid = self.send_basic(api, vpl, url)
+            Bar.send(str(qid))
+            self.update_extra(api, vpl, qid)
+            self.set_keep(api, qid, vpl.keep_size)
+            self.structure.add_entry(self.section, qid, vpl.title)
             Bar.done()
 
     def add_target(self, target: str):
@@ -543,26 +572,59 @@ class Actions:
             action.add_target(target)
 
     @staticmethod
+    def define(args):
+        if args.upload is None:
+            args.upload = []
+        if args.keep is None:
+            args.keep = []
+        data = {"keep": args.keep, "upload": args.upload, "required": args.required}
+        with open(".mapi", "w") as f:
+            f.write(json.dumps(data, indent=4) + "\n")
+            print("file .mapi created")
+
+    @staticmethod
     def update(args):
         args_ids: List[int] = args.ids
-        args_section: Optional[int] = args.section
+        args_section: List[int] = args.section
         args_all: bool = args.all
         args_exec_options = args.exec_options
+        args_remote = args.remote
+        #args_duedate = args.duedate
+        args_labels: List[str] = args.labels
 
         item_list: List[StructureItem] = []
-        api = MoodleAPI()
         structure = StructureLoader.load()
 
         if args_all:
             item_list = structure.get_itens()
-        elif args_section:
-            item_list = structure.get_itens(args_section)
+        elif args_section is not None and len(args_section) > 0:
+            for section in args_section:
+                item_list += structure.get_itens(section)
         elif args_ids:
-            for id in args_ids:
-                if structure.has_id(id):
-                    item_list.append(structure.get_item(id))
+            for qid in args_ids:
+                if structure.has_id(qid):
+                    item_list.append(structure.get_item(qid))
                 else:
-                    print("    - id not found: ", id)
+                    print("    - id not found: ", qid)
+        if args_labels:
+            for label in args_labels:
+                item_list += [item for item in structure.get_itens() if item.label == label]
+        
+        if args_remote:
+            i = 0
+            while i < len(item_list):
+                item = item_list[i]
+                action = Add(item.section, None, True, False, True, structure)
+                action.add_target(item.label)
+                i += 1
+        
+        # if args_duedate:
+        #     i = 0
+        #     while i < len(item_list):
+        #         item = item_list[i]
+        #         action = Add(item.section, args_duedate, True, False, True, structure)
+        #         action.add_target(item.label)
+        #         i += 1
 
         if args_exec_options:
             i = 0
@@ -595,11 +657,11 @@ class Actions:
         elif args_section:
             item_list = structure.get_itens(args_section)
         elif args_ids:
-            for id in args_ids:
-                if structure.has_id(id):
-                    item_list.append(structure.get_item(id))
+            for qid in args_ids:
+                if structure.has_id(qid):
+                    item_list.append(structure.get_item(qid))
                 else:
-                    print("    - id not found: ", id)
+                    print("    - id not found: ", qid)
 
         i = 0
         while i < len(item_list):
@@ -630,11 +692,11 @@ class Actions:
         elif args_section:
             item_list = structure.get_itens(args_section)
         elif args_ids:
-            for id in args_ids:
-                if structure.has_id(id):
-                    item_list.append(structure.get_item(id))
+            for qid in args_ids:
+                if structure.has_id(qid):
+                    item_list.append(structure.get_item(qid))
                 else:
-                    print("    - id not found", id)
+                    print("    - id not found", qid)
 
         i = 0
         while i < len(item_list):
@@ -662,8 +724,8 @@ class Actions:
 
 
 def main():
-#    p_config = argparse.ArgumentParser(add_help=False)
-    #p_config.add_argument('-c', '--config', type=str, help="config file path")
+    # p_config = argparse.ArgumentParser(add_help=False)
+    # p_config.add_argument('-c', '--config', type=str, help="config file path")
 
     p_section = argparse.ArgumentParser(add_help=False)
     p_section.add_argument('-s', '--section', metavar='SECTION', type=int, help="")
@@ -673,9 +735,6 @@ def main():
 
     desc = ("Gerenciar vpls do moodle de forma automatizada\n"
             "Use \"./mapi comando -h\" para obter informações do comando específico.\n\n"
-            "Exemplos:\n"
-            "    ./mapi.py add q.json -s 2   #Insere a questão contida em \"q.json\" na seção 2\n"
-            "    ./mapi.py list              #Lista todas as entradas do curso com seus ids\n"
             )
 
     parser = argparse.ArgumentParser(prog='mapi.py', description=desc, formatter_class=argparse.RawTextHelpFormatter)
@@ -686,15 +745,15 @@ def main():
 
     parser_add = subparsers.add_parser('add', parents=[p_section], help="add")
     parser_add.add_argument('targets', type=str, nargs='+', action='store', help='file, folder ou remote with lab')
-    parser_add.add_argument('-r', '--remote', action='store_true', help="Use remote repository")
-    parser_add.add_argument('-d', '--duedate', type=str, default=None, action='store', help='duedate yyyy:m:d:y:m')
+    parser_add.add_argument('-l', '--local', action='store_true', help="Use local json instead remote repository")
+    parser_add.add_argument('-d', '--duedate', type=str, default=None, action='store', help='duedate yyyy:m:d:h:m')
     group_add = parser_add.add_mutually_exclusive_group()
-    group_add.add_argument('-i', '--ignore', action='store_true', help="Ignore if found same label in section")
-    group_add.add_argument('-u', '--update', action='store_true', help="Update if found same label in section")
+    group_add.add_argument('--skip', action='store_true', help="Skip insertion if found same label in section")
+    group_add.add_argument('--force', action='store_true', help="Force insertion if found same label in section")
     parser_add.set_defaults(func=Actions.add)
 
     parser_list = subparsers.add_parser('list', parents=[p_section], help='list')
-    parser_list.add_argument('-u', '--url', action='store_true', help="Show urls")
+    parser_list.add_argument('-u', '--url', action='store_true', help="Show vpl urls")
     parser_list.set_defaults(func=Actions.list)
 
     parser_rm = subparsers.add_parser('rm', help="Remove from Moodle")
@@ -714,16 +773,26 @@ def main():
     parser_update = subparsers.add_parser('update', help='Update vpls')
     group_update = parser_update.add_mutually_exclusive_group()
     group_update.add_argument('-i', '--ids', type=int, metavar='ID', nargs='*', action='store', help='Indexes')
+    group_update.add_argument('-l', '--labels', type=str, metavar='ID', nargs='*', action='store', help='Labels')
     group_update.add_argument('--all', action='store_true', help="All vpls")
-    group_update.add_argument('-s', '--section', metavar='SECTION', type=int, help="")
+    group_update.add_argument('-s', '--section', metavar='SECTION', type=int, nargs='*', help="")
+    parser_update.add_argument('--remote', action='store_true', help="update by label using remote")
     parser_update.add_argument('--exec-options', action='store_true', help="enable all execution options")
+    #parser_update.add_argument('--duedate', type=str, default=None, action='store', help='duedate yyyy:m:d:h:m')
     parser_update.set_defaults(func=Actions.update)
+
+    parser_define = subparsers.add_parser('define', help='define .mapi for question')
+    parser_define.add_argument("--required", "-r", type=str, help='required file')
+    parser_define.add_argument("--upload", "-u", type=str, nargs="*", help="system files to Upload")
+    parser_define.add_argument("--keep", "-k", type=str, nargs="*", help="user files to Keep in execution")
+    parser_define.set_defaults(func=Actions.define)
 
     args = parser.parse_args()
     if args.config:
         Credentials.config_path = args.config
-    if args.timeout:
+    if args.timeout is not None:
         MoodleAPI.default_timeout = args.timeout
+
 
     if len(sys.argv) > 1:
         args.func(args)
