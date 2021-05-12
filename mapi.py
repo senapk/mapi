@@ -3,7 +3,7 @@
 
 from typing import List, Optional, Any, Dict
 from bs4 import BeautifulSoup
-import mechanize
+import mechanicalsoup
 import json
 import os
 import argparse
@@ -162,7 +162,10 @@ class JsonVplLoader:
             vpl.executionFiles.append(JsonFile(f["name"], f["contents"]))
         if data["requiredFile"] is not None:
             vpl.requiredFile = JsonFile(data["requiredFile"]["name"], data["requiredFile"]["contents"])
-        vpl.keep_size = data["keep_size"]
+        if "keep_size" not in data:
+            vpl.keep_size = 0
+        else:
+            vpl.keep_size = data["keep_size"]
         return vpl
 
     # remote is like https://raw.githubusercontent.com/qxcodefup/moodle/master/base/
@@ -290,17 +293,19 @@ class StructureLoader:
             try:
                 api.open_url(api.urlHandler.course())
                 break
-            except mechanize.URLError as _e:
+            except Exception as _e:
+                print(type(_e))  # debug
+                print(_e)
                 Bar.send("!", 0)
                 api = MoodleAPI()
 
         Bar.send("parse")
-        soup = BeautifulSoup(api.browser.response().read(), 'html.parser')
-        print(soup.find("title"))
+        soup = api.browser.page #BeautifulSoup(api.browser.response().read(), 'html.parser')
         topics = soup.find('ul', {'class:', 'topics'})
         section_item_list = StructureLoader._make_entries_by_section(soup, topics.contents)
         section_labels: List[str] = StructureLoader._make_section_labels(topics.contents)
         Bar.done()
+        print(soup.title.string)
         return Structure(section_item_list, section_labels)
 
     @staticmethod
@@ -351,8 +356,8 @@ class MoodleAPI:
     def __init__(self):
         self.credentials = Credentials.load_credentials()
         self.urlHandler = URLHandler()
-        self.browser = mechanize.Browser()
-        self.browser.set_handle_robots(False)
+        self.browser = mechanicalsoup.StatefulBrowser(user_agent='MechanicalSoup')
+        self.browser.set_user_agent('Mozilla/5.0')
         self._login()
 
     def open_url(self, url: str, data_files: Optional[Any] = None):
@@ -372,9 +377,8 @@ class MoodleAPI:
         self.browser.select_form(nr=0)
         self.browser['username'] = self.credentials.username
         self.browser['password'] = self.credentials.password
-        self.browser.submit()
-        Bar.send("login")
-        if self.browser.geturl() == self.urlHandler.login():
+        self.browser.submit_selected()
+        if self.browser.get_url() == self.urlHandler.login():
             print("Erro de login, verifique login e senha")
             exit(0)
 
@@ -382,9 +386,8 @@ class MoodleAPI:
         Bar.send("load")
         self.open_url(self.urlHandler.delete_vpl(qid))
         Bar.send("submit")
-
-        self.browser.select_form(action=self.urlHandler.delete_action())
-        self.browser.submit()
+        self.browser.select_form(nr=0)
+        self.browser.submit_selected()
 
     def download(self, vplid: int) -> JsonVPL:
         url = self.urlHandler.view_vpl(vplid)
@@ -392,9 +395,9 @@ class MoodleAPI:
         Bar.send("open")
         self.open_url(url)
         Bar.send("parse")
-        soup = BeautifulSoup(self.browser.response().read(), 'html.parser')
+        soup = self.browser.page
         arqs = soup.findAll('h4', {'id': lambda value: value and value.startswith("fileid")})
-        title = soup.find('a', {'href': self.browser.geturl()}).get_text()
+        title = soup.find('a', {'href': self.browser.get_url()}).get_text()
         descr = soup.find('div', {'class': 'box py-3 generalbox'}).find('div', {'class': 'no-overflow'}).get_text()
 
         vpl = JsonVPL(title, descr)
@@ -409,29 +412,34 @@ class MoodleAPI:
 
     def set_duedate(self, duedate: str):
         year, month, day, hour, minute = duedate.split(":")
-        self.browser["duedate[year]"] = [year]
-        self.browser["duedate[month]"] = [month]
-        self.browser["duedate[day]"] = [day]
-        self.browser["duedate[hour]"] = [hour]
-        self.browser["duedate[minute]"] = [minute]
+
+        self.browser["duedate[year]"] = year
+        self.browser["duedate[month]"] = str(int(month)) # tranform 05 to 5
+        self.browser["duedate[day]"] = str(int(day))
+        self.browser["duedate[hour]"] = str(int(hour))
+        self.browser["duedate[minute]"] = str(int(minute))
+
 
     def send_basic_info(self, url: str, vpl: JsonVPL, duedate: Optional[str] = None) -> int:
         Bar.send("1")
         self.open_url(url)
 
         Bar.send("2")
-        self.browser.select_form(action='modedit.php')
+
+        self.browser.select_form(nr=0)
         self.browser['name'] = vpl.title
         self.browser['introeditor[text]'] = vpl.description
-
         if duedate is None:
-            self.browser["duedate[enabled]"] = 0
+            self.browser["duedate[enabled]"] = False
         else:
+            self.browser["duedate[enabled]"] = True
             self.set_duedate(duedate)
 
         Bar.send("3")
-        self.browser.submit(name="submitbutton")
-        qid = URLHandler.parse_id(self.browser.geturl())
+        self.browser.form.choose_submit("submitbutton")
+        self.browser.submit_selected()
+#        self.browser.submit(name="submitbutton")
+        qid = URLHandler.parse_id(self.browser.get_url())
         return int(qid)
 
     def _send_vpl_files(self, url: str, vpl_files: List[JsonFile]):
@@ -443,8 +451,8 @@ class MoodleAPI:
         self.open_url(self.urlHandler.keep_files(qid))
         self.browser.select_form(nr=0)
         for index in range(4, 4 + keep_size):
-            self.browser["keepfile" + str(index)] = ["1"]
-        self.browser.submit()
+            self.browser["keepfile" + str(index)] = "1"
+        self.browser.submit_selected()
 
     def send_files(self, vpl: JsonVPL, qid: int):
         self._send_vpl_files(self.urlHandler.execution_files(qid), vpl.executionFiles)
@@ -454,16 +462,17 @@ class MoodleAPI:
     def set_execution_options(self, qid):
         self.open_url(self.urlHandler.execution_options(qid))
 
-        self.browser.select_form(action='executionoptions.php')
+        self.browser.select_form(nr=0)
 
-        self.browser['run'] = ["1"]
-        self.browser['debug'] = ["1"]
-        self.browser['evaluate'] = ["1"]
+        self.browser['run'] = "1"
+        self.browser['debug'] = "1"
+        self.browser['evaluate'] = "1"
         # self.browser.submit()
         #
         # self.browser.select_form(action='executionoptions.php')
-        self.browser['automaticgrading'] = ["1"]
-        self.browser.submit()
+        self.browser['automaticgrading'] = "1"
+        self.browser.submit_selected()
+        Bar.send("ok")
 
     @staticmethod
     def __dumper(obj):
@@ -474,13 +483,13 @@ class MoodleAPI:
 
 
 class Add:
-    def __init__(self, section: Optional[int], duedate: Optional[str], remote: bool, op_ignore: bool, op_update: bool,
+    def __init__(self, section: Optional[int], duedate: Optional[str], op_local: bool, op_skip: bool, op_force: bool,
                  structure=None):
         self.section: Optional[int] = 0 if section is None else section
         self.duedate = duedate
-        self.remote: bool = remote
-        self.op_ignore: bool = op_ignore
-        self.op_update: bool = op_update
+        self.remote: bool = not op_local
+        self.op_ignore: bool = op_skip
+        self.op_update: bool = not op_force
         if structure is None:
             self.structure = StructureLoader.load()
         else:
@@ -492,7 +501,9 @@ class Add:
             try:
                 qid = api.send_basic_info(url, vpl, self.duedate)
                 break
-            except mechanize.URLError as _e:
+            except Exception as _e:
+                print(type(_e)) # debug
+                print(_e)
                 api = MoodleAPI()
                 Bar.send("!", 0)
         return qid
@@ -504,7 +515,9 @@ class Add:
             try:
                 api.set_keep(qid, keep_size)
                 break
-            except mechanize.URLError as _e:
+            except Exception as _e:
+                print(type(_e))  # debug
+                print(_e)
                 api = MoodleAPI()
                 Bar.send("!", 0)
 
@@ -515,7 +528,9 @@ class Add:
             try:
                 api.set_execution_options(qid)
                 break
-            except mechanize.URLError as _e:
+            except Exception as _e:
+                print(type(_e))  # debug
+                print(_e)
                 api = MoodleAPI()
                 Bar.send("!", 0)
 
@@ -524,7 +539,9 @@ class Add:
             try:
                 api.send_files(vpl, qid)
                 break
-            except mechanize.URLError as _e:
+            except Exception as _e:
+                print(type(_e))  # debug
+                print(_e)
                 api = MoodleAPI()
                 Bar.send("!", 0)
 
@@ -561,7 +578,9 @@ class Add:
             try:
                 self.apply_action(vpl, item)
                 return
-            except mechanize.URLError as _e:
+            except Exception as _e:
+                print(type(_e))  # debug
+                print(_e)
                 Bar.fail(":" + str(_e))
 
 
@@ -569,7 +588,7 @@ class Actions:
 
     @staticmethod
     def add(args):
-        action = Add(args.section, args.duedate, args.remote, args.ignore, args.update)
+        action = Add(args.section, args.duedate, args.local, args.skip, args.force)
         for target in args.targets:
             action.add_target(target)
 
@@ -640,7 +659,9 @@ class Actions:
                     api.set_execution_options(item.id)
                     i += 1
                     Bar.done()
-                except mechanize.URLError as _e:
+                except Exception as _e:
+                    print(type(_e))  # debug
+                    print(_e)
                     Bar.fail(": timeout")
 
     @staticmethod
@@ -677,7 +698,9 @@ class Actions:
                 open(path, "w").write(str(data))
                 i += 1
                 Bar.done(": " + path)
-            except mechanize.URLError as _e:
+            except Exception as _e:
+                print(type(_e))  # debug
+                print(_e)
                 Bar.fail(": timeout")
 
     @staticmethod
@@ -711,7 +734,9 @@ class Actions:
                 api.delete(item.id)
                 i += 1
                 Bar.done()
-            except mechanize.URLError as _e:
+            except Exception as _e:
+                print(type(_e))  # debug
+                print(_e)
                 Bar.fail(": timeout")
 
     @staticmethod
@@ -794,7 +819,6 @@ def main():
         Credentials.config_path = args.config
     if args.timeout is not None:
         MoodleAPI.default_timeout = args.timeout
-
 
     if len(sys.argv) > 1:
         args.func(args)
