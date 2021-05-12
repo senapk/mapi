@@ -296,6 +296,7 @@ class StructureLoader:
 
         Bar.send("parse")
         soup = BeautifulSoup(api.browser.response().read(), 'html.parser')
+        print(soup.find("title"))
         topics = soup.find('ul', {'class:', 'topics'})
         section_item_list = StructureLoader._make_entries_by_section(soup, topics.contents)
         section_labels: List[str] = StructureLoader._make_section_labels(topics.contents)
@@ -372,6 +373,7 @@ class MoodleAPI:
         self.browser['username'] = self.credentials.username
         self.browser['password'] = self.credentials.password
         self.browser.submit()
+        Bar.send("login")
         if self.browser.geturl() == self.urlHandler.login():
             print("Erro de login, verifique login e senha")
             exit(0)
