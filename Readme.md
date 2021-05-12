@@ -16,16 +16,34 @@
 
 API de publicação automática de VPL's no Moodle/Moodle2
 
-É necessário primeiro baixar as bibliotecas mechanize e bs4 usando o pip
+É necessário primeiro baixar as bibliotecas mechanicalsoup e bs4 usando o pip
 
 ## Configurações da ferramenta
 Instale o python e o pip. Depois instale as dependências com
 
 ```
-pip install mechanize bs4
+pip install mechanicalsoup bs4
 ```
 
 baixe o arquivo `mapi.py`, coloque como executável, e adicione a algum lugar do seu path.
+
+Se não quiser adicionar diretamente no path, você terá que invocá-lo diretamente utilizando
+
+```bash
+$ python mapi.py
+#ou
+$ chmod +x mapi.py
+$ ./mapi.py
+```
+
+Pode também incluir um alias no seu arquivo ".bashrc" ou ".zshrc" para chamar o script de qualquer lugar
+
+```bash
+#arquivo .bashrc
+alias mapi='/path/completo/para/mapi.py'
+```
+
+pronto, agora basta invocar mapi de qualquer pasta.
 
 ## Configurando acesso ao curso
 
@@ -57,6 +75,14 @@ Se estiver utilizando o moodle2 da UFC de Quixadá e for trabalhar com a discipl
 ```
 
 Se preferir, pode deixar o campo password com valor null `"password": null`. O script vai perguntar sua senha em cada operação.
+
+
+Se tiver utilizando o alias, pode deixar o parâmetro fixo integrado no alias
+
+```bash
+#arquivo .bashrc
+alias mapi='/path/completo/para/mapi.py -c /path/completo/para/curso.json'
+```
 
 
 ## Listando estrutura de um curso
