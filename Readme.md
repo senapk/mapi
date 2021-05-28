@@ -43,11 +43,30 @@ Pode também incluir um alias no seu arquivo ".bashrc" ou ".zshrc" para chamar o
 alias mapi='/path/completo/para/mapi.py'
 ```
 
-pronto, agora basta invocar mapi de qualquer pasta.
+pronto, agora basta invocar mapi de qualquer pasta. A partir de agora, vou me referir ao comando apenas como `mapi`. Para conferir a instalação, basta abrir o terminal e digitar `mapi -h`.
 
 ## Configurando acesso ao curso
 
-Crie um arquivo `curso.json` com o seguinte formato.
+
+### Modo rápido
+Para criar o arquivo default com o acesso ao seu curso basta executar o seguinte comando no terminal, substituindo os valores de usuário, senha e número do curso do moodle. Os campos de url e remote já estão configurados para o curso de fup. Será criado um arquivo .mapirc na sua pasta home.
+
+```bash
+$ mapi setup --username SEU_USUARIO --password SUA_SENHA --course O_NUMERO_DO_SEU_CURSO_DO_MOODLE \
+--url https://moodle2.quixada.ufc.br --remote https://raw.githubusercontent.com/qxcodefup/moodle/master/base
+```
+
+Para obter o número do curso, basta olhar o último número na URL do seu curso do moodle.
+
+![](resources/curso.png)
+
+Se não passar o parâmetro --password, a senha será perguntada em cada utilização.
+
+Agora basta dar um `mapi list` para listar o conteúdo do seu curso. Ou `./mapi.py list` dependendo de se ele está no seu path ou não.
+
+### Modo personalizado
+Se 
+Você pode criar arquivos de configuração para diferentes cursos do moodle. Você pode criar um arquivo `curso.json` com o seguinte formato e valores.
 ```
 {
     "username": "seu_login",
@@ -57,10 +76,6 @@ Crie um arquivo `curso.json` com o seguinte formato.
     "remote": "url do repositório remoto de questões"
 }
 ```
-
-Para obter o número do curso, basta olhar o último número na URL do seu curso do moodle.
-
-![](resources/curso.png)
 
 Se estiver utilizando o moodle2 da UFC de Quixadá e for trabalhar com a disciplina FUP, seu arquivo será igual a esse, mudando apenas os três primeiros campos.
 
@@ -76,8 +91,7 @@ Se estiver utilizando o moodle2 da UFC de Quixadá e for trabalhar com a discipl
 
 Se preferir, pode deixar o campo password com valor null `"password": null`. O script vai perguntar sua senha em cada operação.
 
-
-Se tiver utilizando o alias, pode deixar o parâmetro fixo integrado no alias
+Se não estiver utilizando o arquivo de configuração padrão, terá que passar seu curso sempre por parâmetro na invocação do script. Se tiver utilizando o alias, pode deixar o parâmetro fixo integrado no alias
 
 ```bash
 #arquivo .bashrc
@@ -90,7 +104,7 @@ alias mapi='/path/completo/para/mapi.py -c /path/completo/para/curso.json'
 Para saber se está funcionando, você pode listar as questões do seu curso. Você pode ter múltiplos arquivos de configuração, um para cada curso.
 
 ```
-$ mapi.py -c curso.json list
+$ mapi -c curso.json list
 ```
 
 Quando estiver povoado, a saída será como a da figura abaixo.
@@ -99,7 +113,7 @@ Quando estiver povoado, a saída será como a da figura abaixo.
 Você pode salvar o arquivo de configuração no seu diretório `home` como `.mapirc` e será o arquivo carregado por default caso não seja explicitado outro arquivo.
 
 ```
-$ mapi.py list
+$ mapi list
 ```
 
 Para todo o resto do tutorial, vamos omitir o parâmetro do arquivo de configuração.
@@ -114,20 +128,20 @@ O procedimento padrão para inserção é utilizando as questões do repositóri
 
 Para enviar a questão `@192 A idade de Dona Mônica` para a seção 5 do seu curso do moodle use:
 
-```
-$ mapi.py add 195 --section 5
+```bash
+$ mapi add 195 --section 5
 ```
 
 Ou de forma resumida
 
-```
-$ mapi.py add 195 -s 5
+```bash
+$ mapi add 195 -s 5
 ```
 
 É possível enviar várias questões ao mesmo tempo com o mesmo comando. Para enviar 002, 003, 004 e 006 para a seção 5:
 
 ```
-$ mapi.py add 002 003 004 006 -s 5
+$ mapi add 002 003 004 006 -s 5
 ```
 
 ### Inserindo questões duplicadas
@@ -140,48 +154,40 @@ Por default, as questões são inseridas sem prazo para fechamento da atividade.
 ## Removendo
 ```bash
 # para remover todos os vpls da seção 4
-$ mapi.py rm -s 4
+$ mapi rm -s 4
 
 # para remover as questões passando os IDS
-$ mapi.py rm -i 19234 18234 19234
+$ mapi rm -i 19234 18234 19234
 
 # para remover TODOS os vpls do curso
-$ mapi.py rm --all
+$ mapi rm --all
 ```
 
-## Update
+## Update, Rm e Download
 Update pode ser utilizado para
 - Habilitar as opções de execução das questões que você criou manualmente
 - Atualizar as questões utilizando o label e buscando no repositório por updates.
+- Atualizar a data de finalização da questão.
 
 Você pode solicitar atualização por label, índice ou para todos as questões de uma seção.
 
-## Criando suas próprias questões
+```bash
+# desabilitando a data de término (duedate) de todas as questões da seção 4 com -s ou --sections
+$ mapi update -s 4 --duedate 0
 
-Se quiser criar suas próprias questões manualmente, deve criar um arquivo .json com as informações necessárias usando o modelo a seguir.
+# colocando um duedate específico yyyy:m:d:h:m da questão de label @023 com -l ou --labels
+$ mapi update -l 023 --duedate 2021:5:28:11:30
 
-```json
-{
-  "title": "@001 #4_fun Faca a função soma2",
-  "description": "Leia dois números um por linha e faça a função soma\n",
-  "executionFiles": [
-    {
-      "name": "vpl_evaluate.cases",
-      "contents": "conteudo dos testes"
-    },
-    {
-      "name": "solver.c.txt",
-      "contents": "conteudo do solver"
-    }
-  ], 
-  "requiredFile": {
-    "name": "lib.c",
-    "contents": "conteudo da lib.c"
-  }
-}
+# habilitando as opções de execução para todas as questões do cursos
+$ mapi update --all --exec-options
+
+# atualizando todas as suas questões por label utilizando a versão mais atual do servidor remoto
+$ mapi update --all --remote
 ```
 
-Se não houver arquivo requerido, ponha `"requiredFile" = null`.
+## Removendo e Baixando.
+Remover utiliza os mesmos parâmetros -l (labels), -s (sections), -a(all), -i(ids).
 
-Depois, basta enviar usando o parâmtro `--local` no comando `add`.
+O comando de download baixa a questão do moodle para seu computador num formato que permite alteração e reenvio ao moodle.
 
+Para reinserir uma questão baixada do moodle, basta utilizar o parâmetro --local no add.

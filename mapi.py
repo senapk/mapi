@@ -2,7 +2,6 @@
 # -*- coding: utf-8 -*-
 
 from typing import List, Optional, Any, Dict
-from bs4 import BeautifulSoup
 import mechanicalsoup
 import json
 import os
@@ -11,6 +10,18 @@ import sys
 import getpass  # get pass
 import pathlib
 import requests
+from enum import Enum
+
+
+class SourceMode(Enum):
+    LOCAL = 0
+    REMOTE = 1
+
+
+class MergeMode(Enum):
+    DUPLICATE = 0
+    SKIP = 1
+    UPDATE = 2
 
 
 class URLHandler:
@@ -86,30 +97,63 @@ class Credentials:
         self.remote = remote
 
     @staticmethod
+    def load_default_config_path():
+        return str(pathlib.Path.home()) + os.sep + '.mapirc'
+
+    @staticmethod
+    def load_file(path):
+        config = {}
+        try:
+            if not os.path.isfile(path):
+                raise FileNotFoundError
+            with open(path) as f:
+                config = json.load(f)
+        except (FileNotFoundError, json.JSONDecodeError) as e:
+            print("Create a file with your access credentials: " + path)
+            print(e)
+            exit(1)
+        if "password" not in config or config["password"] is None:
+            config["password"] = None
+        if "remote" not in config:
+            config["remote"] = ""
+        return Credentials(config["username"], config["password"], config["url"], config["course"], config["remote"])
+
+    @staticmethod
+    def update_config(username, password, url, course, remote):
+        if Credentials.config_path is None:
+            Credentials.config_path = Credentials.load_default_config_path()
+        mapirc = Credentials.config_path
+        if not os.path.isfile(mapirc):
+            with open(mapirc, "w") as f:
+                f.write(json.dumps({"username": "", "password": None, "url": "", "course": "", "remote": ""}, indent=4))
+
+        credentials = Credentials.load_file(mapirc)
+        if username is not None:
+            credentials.username = username
+        if password is not None:
+            credentials.password = password
+        if url is not None:
+            credentials.url = url
+        if course is not None:
+            credentials.course = course
+        if remote is not None:
+            credentials.remote = remote
+
+        with open(mapirc, "w") as f:
+            f.write(json.dumps({"username": credentials.username,
+                                "password": credentials.password, "url": credentials.url,
+                                "course": credentials.course, "remote": credentials.remote}, indent=4) + "\n")
+
+    @staticmethod
     def load_credentials():
         if Credentials.instance is not None:
             return Credentials.instance
-        config = {}  # ["username"] ["url"] ["course"] ["password"]
         if Credentials.config_path is None:
-            Credentials.config_path = str(pathlib.Path.home()) + os.sep + '.mapirc'
-        mapirc = Credentials.config_path
-        try:
-            if not os.path.isfile(mapirc):
-                raise FileNotFoundError
-            with open(mapirc) as f:
-                config = json.load(f)
-        except (FileNotFoundError, json.JSONDecodeError) as e:
-            print("Create a file with your access credentials: " + mapirc)
-            print(e)
-            exit(1)
-
-        if "password" not in config or config["password"] is None:
-            config["password"] = getpass.getpass()
-        if "remote" not in config:
-            config["remote"] = ""
-        Credentials.instance = Credentials(config["username"], config["password"], config["url"], config["course"],
-                                           config["remote"])
-
+            Credentials.config_path = Credentials.load_default_config_path()
+        Credentials.instance = Credentials.load_file(Credentials.config_path)
+        if Credentials.instance.password is None:
+            print("Digite sua senha:")
+            Credentials.instance.password = getpass.getpass()
         return Credentials.instance
 
     def __str__(self):
@@ -170,8 +214,8 @@ class JsonVplLoader:
 
     # remote is like https://raw.githubusercontent.com/qxcodefup/moodle/master/base/
     @staticmethod
-    def load(target: str, remote: bool) -> JsonVPL:
-        if remote:
+    def load(target: str, source_mode: SourceMode) -> JsonVPL:
+        if source_mode == SourceMode.REMOTE:
             remote_url = Credentials.load_credentials().remote
             url = os.path.join(remote_url, target + "/mapi.json")
             print("    - Loading from remote")
@@ -300,7 +344,7 @@ class StructureLoader:
                 api = MoodleAPI()
 
         Bar.send("parse")
-        soup = api.browser.page #BeautifulSoup(api.browser.response().read(), 'html.parser')
+        soup = api.browser.page  # BeautifulSoup(api.browser.response().read(), 'html.parser')
         topics = soup.find('ul', {'class:', 'topics'})
         section_item_list = StructureLoader._make_entries_by_section(soup, topics.contents)
         section_labels: List[str] = StructureLoader._make_section_labels(topics.contents)
@@ -410,35 +454,40 @@ class MoodleAPI:
                 vpl.executionFiles.append(file)
         return vpl
 
-    def set_duedate(self, duedate: str):
+    def set_duedate_field_in_form(self, duedate: Optional[str]):
+        if duedate is None:  # unchange default
+            return
+
+        if duedate == "0":  # disable
+            self.browser["duedate[enabled]"] = False
+            return
+        self.browser["duedate[enabled]"] = True
         year, month, day, hour, minute = duedate.split(":")
 
         self.browser["duedate[year]"] = year
-        self.browser["duedate[month]"] = str(int(month)) # tranform 05 to 5
+        self.browser["duedate[month]"] = str(int(month))  # tranform 05 to 5
         self.browser["duedate[day]"] = str(int(day))
         self.browser["duedate[hour]"] = str(int(hour))
         self.browser["duedate[minute]"] = str(int(minute))
 
+    def update_duedate_only(self, url: str, duedate: Optional[str] = None):
+        Bar.send("duedate")
+        self.open_url(url)
+        self.browser.select_form(nr=0)
+        self.set_duedate_field_in_form(duedate)
+        self.browser.form.choose_submit("submitbutton")
+        self.browser.submit_selected()
 
     def send_basic_info(self, url: str, vpl: JsonVPL, duedate: Optional[str] = None) -> int:
-        Bar.send("1")
         self.open_url(url)
-
-        Bar.send("2")
+        Bar.send("info")
 
         self.browser.select_form(nr=0)
         self.browser['name'] = vpl.title
         self.browser['introeditor[text]'] = vpl.description
-        if duedate is None:
-            self.browser["duedate[enabled]"] = False
-        else:
-            self.browser["duedate[enabled]"] = True
-            self.set_duedate(duedate)
-
-        Bar.send("3")
+        self.set_duedate_field_in_form(duedate)
         self.browser.form.choose_submit("submitbutton")
         self.browser.submit_selected()
-#        self.browser.submit(name="submitbutton")
         qid = URLHandler.parse_id(self.browser.get_url())
         return int(qid)
 
@@ -472,7 +521,7 @@ class MoodleAPI:
         # self.browser.select_form(action='executionoptions.php')
         self.browser['automaticgrading'] = "1"
         self.browser.submit_selected()
-        Bar.send("ok")
+        Bar.send("exec")
 
     @staticmethod
     def __dumper(obj):
@@ -483,13 +532,12 @@ class MoodleAPI:
 
 
 class Add:
-    def __init__(self, section: Optional[int], duedate: Optional[str], op_local: bool, op_skip: bool, op_force: bool,
+    def __init__(self, section: Optional[int], duedate: Optional[str], source_mode: SourceMode, merge_mode: MergeMode,
                  structure=None):
         self.section: Optional[int] = 0 if section is None else section
         self.duedate = duedate
-        self.remote: bool = not op_local
-        self.op_ignore: bool = op_skip
-        self.op_update: bool = not op_force
+        self.source_mode = source_mode
+        self.merge_mode = merge_mode
         if structure is None:
             self.structure = StructureLoader.load()
         else:
@@ -502,7 +550,7 @@ class Add:
                 qid = api.send_basic_info(url, vpl, self.duedate)
                 break
             except Exception as _e:
-                print(type(_e)) # debug
+                print(type(_e))  # debug
                 print(_e)
                 api = MoodleAPI()
                 Bar.send("!", 0)
@@ -548,7 +596,7 @@ class Add:
     def apply_action(self, vpl: JsonVPL, item: Optional[StructureItem]):
         api = MoodleAPI()  # creating new browser for each attempt to avoid some weird timeout
 
-        if item is not None and self.op_update:
+        if item is not None and self.merge_mode == MergeMode.UPDATE:
             print("    - Updating: Label found in " + str(item.id) + ": " + item.title)
             url = api.urlHandler.update_vpl(item.id)
             Bar.open()
@@ -556,9 +604,9 @@ class Add:
             self.update_extra(api, vpl, item.id)
             self.set_keep(api, item.id, vpl.keep_size)
             Bar.done()
-        elif item is not None and self.op_ignore:
+        elif item is not None and self.merge_mode == MergeMode.SKIP:
             print("    - Skipping: Label found in " + str(item.id) + ": " + item.title)
-        else:
+        else:  # new
             print("    - Creating: New entry with title: " + vpl.title)
             Bar.open()
             url = api.urlHandler.new_vpl(self.section)
@@ -571,7 +619,7 @@ class Add:
 
     def add_target(self, target: str):
         print("- Target: " + target)
-        vpl = JsonVplLoader.load(target, self.remote)
+        vpl = JsonVplLoader.load(target, self.source_mode)
         itens_label_match = self.structure.search_by_label(StructureItem.parse_label(vpl.title), self.section)
         item = None if len(itens_label_match) == 0 else itens_label_match[0]
         while True:
@@ -584,38 +632,11 @@ class Add:
                 Bar.fail(":" + str(_e))
 
 
-class Actions:
+class Update:
 
     @staticmethod
-    def add(args):
-        action = Add(args.section, args.duedate, args.local, args.skip, args.force)
-        for target in args.targets:
-            action.add_target(target)
-
-    @staticmethod
-    def define(args):
-        if args.upload is None:
-            args.upload = []
-        if args.keep is None:
-            args.keep = []
-        data = {"keep": args.keep, "upload": args.upload, "required": args.required}
-        with open(".mapi", "w") as f:
-            f.write(json.dumps(data, indent=4) + "\n")
-            print("file .mapi created")
-
-    @staticmethod
-    def update(args):
-        args_ids: List[int] = args.ids
-        args_section: List[int] = args.section
-        args_all: bool = args.all
-        args_exec_options = args.exec_options
-        args_remote = args.remote
-        #args_duedate = args.duedate
-        args_labels: List[str] = args.labels
-
-        item_list: List[StructureItem] = []
-        structure = StructureLoader.load()
-
+    def load_itens(args_all, args_section, args_ids, args_labels, structure):
+        item_list = []
         if args_all:
             item_list = structure.get_itens()
         elif args_section is not None and len(args_section) > 0:
@@ -630,61 +651,92 @@ class Actions:
         if args_labels:
             for label in args_labels:
                 item_list += [item for item in structure.get_itens() if item.label == label]
-        
-        if args_remote:
-            i = 0
-            while i < len(item_list):
-                item = item_list[i]
-                action = Add(item.section, None, True, False, True, structure)
-                action.add_target(item.label)
-                i += 1
-        
-        # if args_duedate:
-        #     i = 0
-        #     while i < len(item_list):
-        #         item = item_list[i]
-        #         action = Add(item.section, args_duedate, True, False, True, structure)
-        #         action.add_target(item.label)
-        #         i += 1
+        return item_list
 
-        if args_exec_options:
-            i = 0
-            while i < len(item_list):
-                item = item_list[i]
-                print("- Change execution options for " + str(item.id))
-                print("    -", str(item))
-                try:
-                    Bar.open()
-                    api = MoodleAPI()
+    @staticmethod
+    def from_remote(item_list, duedate, structure):
+        for item in item_list:
+            action = Add(item.section, duedate=duedate, source_mode=SourceMode.REMOTE, merge_mode=MergeMode.UPDATE,
+                         structure=structure)
+            action.add_target(item.label)
+
+    @staticmethod
+    def exec_or_duedate(item_list, args_exec_options, args_duedate):
+        i = 0
+        api = MoodleAPI()
+        while i < len(item_list):
+            item = item_list[i]
+            print("- Change execution options for " + str(item.id))
+            print("    -", str(item))
+            try:
+                Bar.open()
+                if args_exec_options:
                     api.set_execution_options(item.id)
-                    i += 1
-                    Bar.done()
-                except Exception as _e:
-                    print(type(_e))  # debug
-                    print(_e)
-                    Bar.fail(": timeout")
+
+                if args_duedate:
+                    url = api.urlHandler.update_vpl(item.id)
+                    api.update_duedate_only(url, args_duedate)
+
+                i += 1
+                Bar.done()
+            except Exception as _e:
+                api = MoodleAPI()
+                print(type(_e))  # debug
+                print(_e)
+                Bar.fail(": timeout")
+
+
+class Actions:
+
+    @staticmethod
+    def add(args):
+        merge_mode = MergeMode.UPDATE
+        if args.skip:
+            merge_mode = MergeMode.SKIP
+        elif args.duplicate:
+            merge_mode = MergeMode.DUPLICATE
+        
+        source_mode = SourceMode.LOCAL if args.local else SourceMode.REMOTE
+        action = Add(args.section, args.duedate, source_mode, merge_mode)
+        for target in args.targets:
+            action.add_target(target)
+
+    @staticmethod
+    def setup(args):
+        Credentials.update_config(args.username, args.password, args.url, args.course, args.remote)
+
+    # @staticmethod
+    # def define(args):
+    #     if args.upload is None:
+    #         args.upload = []
+    #     if args.keep is None:
+    #         args.keep = []
+    #     data = {"keep": args.keep, "upload": args.upload, "required": args.required}
+    #     with open(".mapi", "w") as f:
+    #         f.write(json.dumps(data, indent=4) + "\n")
+
+    @staticmethod
+    def update(args):
+        args_exec_options = args.exec_options
+        args_duedate = args.duedate
+        args_remote = args.remote
+
+        structure = StructureLoader.load()
+        item_list = Update.load_itens(args.all, args.section, args.ids, args.labels, structure)
+
+        if args_remote:
+            Update.from_remote(item_list, args_duedate, structure)
+
+        if args_exec_options or args_duedate:
+            Update.exec_or_duedate(item_list, args_exec_options, args_duedate)
 
     @staticmethod
     def down(args):
-        args_ids: List[int] = args.ids
-        args_section: Optional[int] = args.section
-        args_all: bool = args.all
         args_output: str = args.output
 
-        item_list: List[StructureItem] = []
         api = MoodleAPI()
         structure = StructureLoader.load()
-
-        if args_all:
-            item_list = structure.get_itens()
-        elif args_section:
-            item_list = structure.get_itens(args_section)
-        elif args_ids:
-            for qid in args_ids:
-                if structure.has_id(qid):
-                    item_list.append(structure.get_item(qid))
-                else:
-                    print("    - id not found: ", qid)
+        item_list = Update.load_itens(args.all, args.section, args.ids, args.labels, structure)
 
         i = 0
         while i < len(item_list):
@@ -705,23 +757,8 @@ class Actions:
 
     @staticmethod
     def rm(args):
-        args_ids: List[int] = args.ids
-        args_section: Optional[int] = args.section
-        args_all: bool = args.all
-
-        item_list: List[StructureItem] = []
         structure = StructureLoader.load()
-
-        if args_all:
-            item_list = structure.get_itens()
-        elif args_section:
-            item_list = structure.get_itens(args_section)
-        elif args_ids:
-            for qid in args_ids:
-                if structure.has_id(qid):
-                    item_list.append(structure.get_item(qid))
-                else:
-                    print("    - id not found", qid)
+        item_list = Update.load_itens(args.all, args.section, args.ids, args.labels, structure)
 
         i = 0
         while i < len(item_list):
@@ -757,6 +794,17 @@ def main():
     p_section = argparse.ArgumentParser(add_help=False)
     p_section.add_argument('-s', '--section', metavar='SECTION', type=int, help="")
 
+    p_selection = argparse.ArgumentParser(add_help=False)
+    selection_group = p_selection.add_mutually_exclusive_group()
+    selection_group.add_argument('--all', action='store_true', help="All vpls")
+    selection_group.add_argument('-i', '--ids', type=int, metavar='ID', nargs='*', action='store')
+    selection_group.add_argument('-l', '--labels', type=str, metavar='LABEL', nargs='*', action='store')
+    selection_group.add_argument('-s', '--sections', metavar='SECTION', nargs='*', type=int, help="")
+
+    p_duedate = argparse.ArgumentParser(add_help=False)
+    p_duedate.add_argument('-d', '--duedate', type=str, default=None, action='store', 
+                           help='duedate = 0 to disable or duedate yyyy:m:d:h:m')
+
     p_out = argparse.ArgumentParser(add_help=False)
     p_out.add_argument('-o', '--output', type=str, default='.', action='store', help='Output directory')
 
@@ -770,49 +818,38 @@ def main():
 
     subparsers = parser.add_subparsers(title="subcommands", help="help for subcommand")
 
-    parser_add = subparsers.add_parser('add', parents=[p_section], help="add")
+    parser_add = subparsers.add_parser('add', parents=[p_section, p_duedate], help="add")
     parser_add.add_argument('targets', type=str, nargs='+', action='store', help='file, folder ou remote with lab')
     parser_add.add_argument('-l', '--local', action='store_true', help="Use local json instead remote repository")
-    parser_add.add_argument('-d', '--duedate', type=str, default=None, action='store', help='duedate yyyy:m:d:h:m')
+
     group_add = parser_add.add_mutually_exclusive_group()
-    group_add.add_argument('--skip', action='store_true', help="Skip insertion if found same label in section")
-    group_add.add_argument('--force', action='store_true', help="Force insertion if found same label in section")
+    group_add.add_argument('--update', action='store_true', help="Default: update if label conflict")
+    group_add.add_argument('--skip', action='store_true', help="skip if label conflict")
+    group_add.add_argument('--duplicate', action='store_true', help="duplicate if label conflict")
     parser_add.set_defaults(func=Actions.add)
 
     parser_list = subparsers.add_parser('list', parents=[p_section], help='list')
     parser_list.add_argument('-u', '--url', action='store_true', help="Show vpl urls")
     parser_list.set_defaults(func=Actions.list)
 
-    parser_rm = subparsers.add_parser('rm', help="Remove from Moodle")
-    group_rm = parser_rm.add_mutually_exclusive_group()
-    group_rm.add_argument('-i', '--ids', type=int, metavar='ID', nargs='*', action='store', help='')
-    group_rm.add_argument('--all', action='store_true', help="All vpls")
-    group_rm.add_argument('-s', '--section', metavar='SECTION', type=int, help="")
+    parser_rm = subparsers.add_parser('rm', parents=[p_selection], help="Remove from Moodle")
     parser_rm.set_defaults(func=Actions.rm)
 
-    parser_down = subparsers.add_parser('down', parents=[p_out], help='Download vpls')
-    group_down = parser_down.add_mutually_exclusive_group()
-    group_down.add_argument('-i', '--ids', type=int, metavar='ID', nargs='*', action='store', help='Indexes')
-    group_down.add_argument('--all', action='store_true', help="All vpls")
-    group_down.add_argument('-s', '--section', metavar='SECTION', type=int, help="")
+    parser_down = subparsers.add_parser('down', parents=[p_selection, p_out], help='Download vpls')
     parser_down.set_defaults(func=Actions.down)
 
-    parser_update = subparsers.add_parser('update', help='Update vpls')
-    group_update = parser_update.add_mutually_exclusive_group()
-    group_update.add_argument('-i', '--ids', type=int, metavar='ID', nargs='*', action='store', help='Indexes')
-    group_update.add_argument('-l', '--labels', type=str, metavar='ID', nargs='*', action='store', help='Labels')
-    group_update.add_argument('--all', action='store_true', help="All vpls")
-    group_update.add_argument('-s', '--section', metavar='SECTION', type=int, nargs='*', help="")
-    parser_update.add_argument('--remote', action='store_true', help="update by label using remote")
-    parser_update.add_argument('--exec-options', action='store_true', help="enable all execution options")
-    #parser_update.add_argument('--duedate', type=str, default=None, action='store', help='duedate yyyy:m:d:h:m')
+    parser_update = subparsers.add_parser('update', parents=[p_selection, p_duedate], help='Update vpls')
+    parser_update.add_argument('-r', '--remote', action='store_true', help="update by label using remote")
+    parser_update.add_argument('-e', '--exec-options', action='store_true', help="enable all execution options")
     parser_update.set_defaults(func=Actions.update)
 
-    parser_define = subparsers.add_parser('define', help='define .mapi for question')
-    parser_define.add_argument("--required", "-r", type=str, help='required file')
-    parser_define.add_argument("--upload", "-u", type=str, nargs="*", help="system files to Upload")
-    parser_define.add_argument("--keep", "-k", type=str, nargs="*", help="user files to Keep in execution")
-    parser_define.set_defaults(func=Actions.define)
+    parser_setup = subparsers.add_parser('setup', help='config default .mapirc file')
+    parser_setup.add_argument("--username", type=str, help='username')
+    parser_setup.add_argument("--password", type=str, help="password")
+    parser_setup.add_argument("--url", type=str, help="moodle root url")
+    parser_setup.add_argument("--course", type=str, help="course number")
+    parser_setup.add_argument("--remote", type=str, help="remote server")
+    parser_setup.set_defaults(func=Actions.setup)
 
     args = parser.parse_args()
     if args.config:
