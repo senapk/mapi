@@ -697,7 +697,7 @@ class Actions:
             merge_mode = MergeMode.DUPLICATE
         
         source_mode = SourceMode.LOCAL if args.local else SourceMode.REMOTE
-        action = Add(args.section, args.duedate, source_mode, merge_mode)
+        action = Add(args.sections, args.duedate, source_mode, merge_mode)
         for target in args.targets:
             action.add_target(target)
 
@@ -722,7 +722,7 @@ class Actions:
         args_remote = args.remote
 
         structure = StructureLoader.load()
-        item_list = Update.load_itens(args.all, args.section, args.ids, args.labels, structure)
+        item_list = Update.load_itens(args.all, args.sections, args.ids, args.labels, structure)
 
         if args_remote:
             Update.from_remote(item_list, args_duedate, structure)
@@ -736,7 +736,7 @@ class Actions:
 
         api = MoodleAPI()
         structure = StructureLoader.load()
-        item_list = Update.load_itens(args.all, args.section, args.ids, args.labels, structure)
+        item_list = Update.load_itens(args.all, args.sections, args.ids, args.labels, structure)
 
         i = 0
         while i < len(item_list):
@@ -758,7 +758,7 @@ class Actions:
     @staticmethod
     def rm(args):
         structure = StructureLoader.load()
-        item_list = Update.load_itens(args.all, args.section, args.ids, args.labels, structure)
+        item_list = Update.load_itens(args.all, args.sections, args.ids, args.labels, structure)
 
         i = 0
         while i < len(item_list):
@@ -778,7 +778,7 @@ class Actions:
 
     @staticmethod
     def list(args):
-        args_section: Optional[int] = args.section
+        args_section: Optional[int] = args.sections
         args_url: bool = args.url
         viewer = Viewer(args_url)
         if args_section is not None:
