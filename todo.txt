@@ -1,0 +1,4 @@
+mapi.py
+    JsonVplLoader
+        função para ler o arquivo mapi.json
+
