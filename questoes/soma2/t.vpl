@@ -1,0 +1,13 @@
+case=
+input=1
+4
+output="5
+"
+grade reduction=100%
+
+case=
+input=7
+3
+output="10
+"
+grade reduction=100%

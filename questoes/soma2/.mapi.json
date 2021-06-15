@@ -1,0 +1,5 @@
+{
+    "upload": ["lib.h", "main.c"],
+    "keep": ["input.txt"],
+    "required": ["lib.c"]
+}

@@ -1,4 +1,3 @@
-mapi.py
-    JsonVplLoader
-        função para ler o arquivo mapi.json
 
+BUG
+    mesmo sem label, ele fez o update
