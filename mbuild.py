@@ -138,11 +138,12 @@ def main():
     parser.add_argument('-o', '--output', type=str, help="path of output file")
     parser.add_argument('-s', '--save', type=str, help="path of the config file")
     parser.add_argument('-l', '--load', type=str, help="path of the config file")
+    parser.add_argument('-f', '--folder', type=str, help="path of the folder to execute default load")
     
     
     args = parser.parse_args()
-    if (args.markdown is None and args.load is None) or (args.output is None and args.save is None):
-        print("You should inform [--markdown or --load] and [--output or --save]")
+    if (args.markdown is None and args.load is None and args.folder is None) or (args.output is None and args.save is None):
+        print("You should inform [--markdown or --load or --folder] and [--output or --save]")
         exit(1)
 
     if args.save:
@@ -156,7 +157,7 @@ def main():
                     }, indent=4))
 
     if args.load:
-        with open(args.load) as f:
+        with open(args.folder) as f:
             config = json.load(f)
             if config["markdown"]:
                 args.markdown = config["markdown"]
@@ -165,6 +166,19 @@ def main():
             args.upload = config["upload"]
             args.keep = config["keep"]
             args.required = config["required"]
+    
+    if args.folder is not None:
+        files = os.listdir(args.default)
+        files = [f for f in files if os.path.isfile(f)] # filter folders
+        files = [f for f in files if not f.startswith(".")] # filter .
+        args.markdown = "Readme.md"
+        args.tests = next([f for f in files if f.endswith(".vpl")], None)
+        args.upload  = [f for f in files if f.lower().startswith("solver")]
+        args.upload += [f for f in files if f.lower().startswith("lib")]
+        args.upload += [f for f in files if f.lower().startswith("main")]
+        args.required  = [f for f in files if f.lower().startswith("student")]
+        args.keep  = [f for f in files if f.lower().startswith("data")]
+
 
     if args.output:
         temp_dir = tempfile.mkdtemp()
