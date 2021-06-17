@@ -697,7 +697,7 @@ class Actions:
             merge_mode = MergeMode.DUPLICATE
         
         source_mode = SourceMode.LOCAL if args.local else SourceMode.REMOTE
-        action = Add(args.sections, args.duedate, source_mode, merge_mode)
+        action = Add(args.section, args.duedate, source_mode, merge_mode)
         for target in args.targets:
             action.add_target(target)
 
@@ -778,7 +778,7 @@ class Actions:
 
     @staticmethod
     def list(args):
-        args_section: Optional[int] = args.sections
+        args_section: Optional[int] = args.section
         args_url: bool = args.url
         viewer = Viewer(args_url)
         if args_section is not None:
