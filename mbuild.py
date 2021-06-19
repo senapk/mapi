@@ -171,13 +171,18 @@ def main():
         files = os.listdir(args.default)
         files = [f for f in files if os.path.isfile(f)] # filter folders
         files = [f for f in files if not f.startswith(".")] # filter .
-        args.markdown = "Readme.md"
-        args.tests = next([f for f in files if f.endswith(".vpl")], None)
-        args.upload  = [f for f in files if f.lower().startswith("solver")]
-        args.upload += [f for f in files if f.lower().startswith("lib")]
-        args.upload += [f for f in files if f.lower().startswith("main")]
-        args.required  = [f for f in files if f.lower().startswith("student")]
-        args.keep  = [f for f in files if f.lower().startswith("data")]
+        if args.markdown is None:
+            args.markdown = "Readme.md"
+        if args.tests is None:
+            args.tests = next([f for f in files if f.endswith(".vpl")], None)
+        #args.upload  = [f for f in files if f.lower().startswith("solver")]
+        if args.upload is None:
+            args.upload = [f for f in files if f.lower().startswith("lib")]
+            args.upload += [f for f in files if f.lower().startswith("main")]
+        if args.required is None:
+            args.required  = [f for f in files if f.lower().startswith("student")]
+        if args.keep is None:
+            args.keep  = [f for f in files if f.lower().startswith("data")]
 
 
     if args.output:
