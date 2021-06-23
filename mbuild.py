@@ -15,9 +15,11 @@ from enum import Enum
 import subprocess
 from subprocess import PIPE
 
+default_config_save_file = ".mapirc.json"
+
 def extract_title(readme_file):
     title = open(readme_file).read().split("\n")[0]
-    parts = title.split("\n")
+    parts = title.split(" ")
     if parts[0].count("#") == len(parts[0]):
         del parts[0]
     title = " ".join(parts)
@@ -122,68 +124,89 @@ def mapi_build(title, description_file, tests_file, required_files, keep_files, 
         f.write(str(jvpl) + "\n")
 
 
+def make_config_content(args) -> str:
+    return json.dumps({
+                    "markdown": args.markdown, 
+                    "tests": args.tests, 
+                    "upload": args.upload, 
+                    "keep": args.keep, 
+                    "required": args.required
+                }, indent=4) + "\n"
 
 
+def replace_null_args_with_data_from_config_file(args, folder, config_file):
+    with open(config_file) as f:
+        config = json.load(f)
+        if args.markdown is None:
+            args.markdown = os.path.join(folder, config["markdown"])
+        if args.tests is None:
+            args.tests = os.path.join(folder, config["tests"])
+        if args.upload is None:
+            args.upload = [os.path.join(folder, f) for f in config["upload"]]
+        if args.keep is None:
+            args.keep = [os.path.join(folder, f) for f in config["keep"]]
+        if args.required is None:
+            args.required = [os.path.join(folder, f) for f in config["required"]]
 
+def replace_null_args_with_default_files_from_folder(args, folder):
+    files = os.listdir(folder)
+    files = [f for f in files if os.path.isfile(f)] # filter folders
+    files = [f for f in files if not f.startswith(".")] # filter .
+    if args.markdown is None:
+        args.markdown = os.path.join(folder, "Readme.md")
+    if args.tests is None:
+        vpl_files = [f for f in files if f.endswith(".vpl")]
+        if len(vpl_files) > 0:
+            args.tests = os.path.join(folder, vpl_files[0])
+    #args.upload  = [f for f in files if f.lower().startswith("solver")]
+    if args.upload is None:
+        args.upload = [f for f in files if f.lower().startswith("lib")]
+        args.upload += [f for f in files if f.lower().startswith("main")]
+        args.upload = [os.path.join(folder, f) for f in args.upload]
+    if args.required is None:
+        args.required  = [f for f in files if f.lower().startswith("student")]
+        args.required = [os.path.join(folder, f) for f in args.required]
+    if args.keep is None:
+        args.keep  = [f for f in files if f.lower().startswith("data")]
+        args.keep = [os.path.join(folder, f) for f in args.keep]
 
 def main():
     parser = argparse.ArgumentParser()
 
     parser.add_argument('-m', '--markdown', type=str, help="readme.md with title and content")
     parser.add_argument('-t', '--tests', type=str, help="path of file with vpl content")
-    parser.add_argument('-u', '--upload', type=str, nargs='*', default=[], action='store', help='files to upload')
-    parser.add_argument('-k', '--keep', type=str, nargs='*', default=[], action='store', help='files to upload and keep in execution')
-    parser.add_argument('-r', '--required', type=str, nargs='*', default=[], action='store', help='files to upload and require from student')
+    parser.add_argument('-u', '--upload', type=str, nargs='*', action='store', help='files to upload')
+    parser.add_argument('-k', '--keep', type=str, nargs='*', action='store', help='files to upload and keep in execution')
+    parser.add_argument('-r', '--required', type=str, nargs='*', action='store', help='files to upload and require from student')
     
     parser.add_argument('-o', '--output', type=str, help="path of output file")
-    parser.add_argument('-s', '--save', type=str, help="path of the config file")
-    parser.add_argument('-l', '--load', type=str, help="path of the config file")
-    parser.add_argument('-f', '--folder', type=str, help="path of the folder to execute default load")
+    parser.add_argument('-s', '--save', type=str, help="path of the folder to save config")
+    parser.add_argument('-l', '--load', type=str, help="path of the folder to load config")
+    parser.add_argument('-d', '--default', action="store_true", default=False, help="force load with default setting")
     
     
     args = parser.parse_args()
-    if (args.markdown is None and args.load is None and args.folder is None) or (args.output is None and args.save is None):
-        print("You should inform [--markdown or --load or --folder] and [--output or --save]")
+    if (args.markdown is None and args.load is None):
+        print("You should inform [--markdown or --load]")
         exit(1)
 
+    if args.load is not None:
+        folder = args.load
+        config_file = os.path.join(folder, default_config_save_file)
+        if os.path.isfile(config_file) and args.default == False:
+            print("file", config_file, "found: loading")
+            replace_null_args_with_data_from_config_file(args, folder, config_file)
+        else:
+            replace_null_args_with_default_files_from_folder(args, folder)
+
+    content = make_config_content(args)
+    if args.save is None and args.output is None:
+        print(content)
+
     if args.save:
-        with open(args.save, "w") as f:
-            f.write(json.dumps({
-                        "markdown": args.markdown, 
-                        "tests": args.tests, 
-                        "upload": args.upload, 
-                        "keep": args.keep, 
-                        "required": args.required
-                    }, indent=4))
-
-    if args.load:
-        with open(args.folder) as f:
-            config = json.load(f)
-            if config["markdown"]:
-                args.markdown = config["markdown"]
-            if config["tests"]:
-                args.tests = config["tests"]
-            args.upload = config["upload"]
-            args.keep = config["keep"]
-            args.required = config["required"]
-    
-    if args.folder is not None:
-        files = os.listdir(args.default)
-        files = [f for f in files if os.path.isfile(f)] # filter folders
-        files = [f for f in files if not f.startswith(".")] # filter .
-        if args.markdown is None:
-            args.markdown = "Readme.md"
-        if args.tests is None:
-            args.tests = next([f for f in files if f.endswith(".vpl")], None)
-        #args.upload  = [f for f in files if f.lower().startswith("solver")]
-        if args.upload is None:
-            args.upload = [f for f in files if f.lower().startswith("lib")]
-            args.upload += [f for f in files if f.lower().startswith("main")]
-        if args.required is None:
-            args.required  = [f for f in files if f.lower().startswith("student")]
-        if args.keep is None:
-            args.keep  = [f for f in files if f.lower().startswith("data")]
-
+        config_file = os.path.join(args.save, default_config_save_file)
+        with open(config_file, "w") as f:
+            f.write(content)
 
     if args.output:
         temp_dir = tempfile.mkdtemp()
