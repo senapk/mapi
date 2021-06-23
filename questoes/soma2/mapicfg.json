@@ -1,0 +1,12 @@
+{
+    "markdown": "Readme.md",
+    "tests": "t.vpl",
+    "upload": [
+        "lib.h",
+        "main.c"
+    ],
+    "keep": [],
+    "required": [
+        "lib.c"
+    ]
+}

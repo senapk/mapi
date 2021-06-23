@@ -1,4 +1,33 @@
-mapi.py
-    JsonVplLoader
-        função para ler o arquivo mapi.json
+- lógica do mirror
 
+- copia todos os arquivos para a pasta do moodle menos os solvers .mapicfg.json
+
+- atualiza o Readme.md do moodle para corrigir header e deixar imagens e arquivos como link absoluto
+- gera o arquivo q.vpl usando o Readme.md e o t.tio
+- se não houver .mapirc.json
+    - gera o mapi.json usando o modo folder do mapi
+- senão
+    - gera o mapi.json com os arquivos definidos no .mapirc.json
+
+- apaga da pasta do moodle, tudo menos o Readme.md, as figuras
+
+
+exemplos de código em c++
+
+main.cpp
+lib.hpp
+lib.cpp
+student.cpp
+solver.cpp
+
+====
+
+main.cpp
+student.cpp
+solver.cpp
+
+===========
+main.cpp
+lib.hpp
+student.cpp
+solver.cpp

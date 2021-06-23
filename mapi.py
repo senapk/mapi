@@ -177,18 +177,19 @@ class JsonVPL:
     def __init__(self, title: str, description: str, tests: Optional[str] = None):
         self.title: str = title
         self.description: str = description
-        self.executionFiles: List[JsonFile] = []
-        self.requiredFile: Optional[JsonFile] = None
-        self.keep_size: int = 0
+        self.upload: List[JsonFile] = []
+        self.required: List[JsonFile] = []
+        self.keep: List[JsonFile] = []
+        
         if tests is not None:
             self.set_test_cases(tests)
 
     def set_test_cases(self, tests: str):
-        file = next((file for file in self.executionFiles if file.name == JsonVPL.test_cases_file_name), None)
+        file = next((file for file in self.upload if file.name == JsonVPL.test_cases_file_name), None)
         if file is not None:
             file.contents = tests
             return
-        self.executionFiles.append(JsonFile("vpl_evaluate.cases", tests))
+        self.upload.append(JsonFile("vpl_evaluate.cases", tests))
 
     def to_json(self) -> str:
         return json.dumps(self, default=lambda o: o.__dict__, indent=4)
@@ -202,14 +203,12 @@ class JsonVplLoader:
     def _load_from_string(text: str) -> JsonVPL:
         data = json.loads(text)
         vpl = JsonVPL(data["title"], data["description"])
-        for f in data["executionFiles"]:
-            vpl.executionFiles.append(JsonFile(f["name"], f["contents"]))
-        if data["requiredFile"] is not None:
-            vpl.requiredFile = JsonFile(data["requiredFile"]["name"], data["requiredFile"]["contents"])
-        if "keep_size" not in data:
-            vpl.keep_size = 0
-        else:
-            vpl.keep_size = data["keep_size"]
+        for f in data["upload"]:
+            vpl.upload.append(JsonFile(f["name"], f["contents"]))
+        for f in data["keep"]:
+            vpl.keep.append(JsonFile(f["name"], f["contents"]))
+        for f in data["required"]:
+            vpl.required.append(JsonFile(f["name"], f["contents"]))
         return vpl
 
     # remote is like https://raw.githubusercontent.com/qxcodefup/moodle/master/base/
@@ -286,6 +285,8 @@ class Structure:
             self.ids_dict[qid] = item
 
     def search_by_label(self, label: str, section: Optional[int] = None) -> List[StructureItem]:
+        if label == "":
+            return []
         if section is None:
             return [item for item in self.ids_dict.values() if item.label == label]
         return [item for item in self.section_item_list[section] if item.label == label]
@@ -449,9 +450,9 @@ class MoodleAPI:
             cont = soup.find('pre', {'id': 'code' + arq.get('id')})
             file = JsonFile(name=arq.get_text(), contents=cont.get_text())
             if arq.find_previous_sibling('h2').get_text() == "Arquivos requeridos":
-                vpl.required = file
+                vpl.required.append(file)
             else:
-                vpl.executionFiles.append(file)
+                vpl.upload.append(file)
         return vpl
 
     def set_duedate_field_in_form(self, duedate: Optional[str]):
@@ -486,6 +487,7 @@ class MoodleAPI:
         self.browser['name'] = vpl.title
         self.browser['introeditor[text]'] = vpl.description
         self.set_duedate_field_in_form(duedate)
+        self.browser['maxfiles'] = max(len(vpl.keep), 1)
         self.browser.form.choose_submit("submitbutton")
         self.browser.submit_selected()
         qid = URLHandler.parse_id(self.browser.get_url())
@@ -504,9 +506,9 @@ class MoodleAPI:
         self.browser.submit_selected()
 
     def send_files(self, vpl: JsonVPL, qid: int):
-        self._send_vpl_files(self.urlHandler.execution_files(qid), vpl.executionFiles)
-        if vpl.requiredFile:
-            self._send_vpl_files(self.urlHandler.required_files(qid), [vpl.requiredFile])
+        self._send_vpl_files(self.urlHandler.execution_files(qid), vpl.keep + vpl.upload)  # don't change this order
+        if len(vpl.required) > 0:
+            self._send_vpl_files(self.urlHandler.required_files(qid), vpl.required)
 
     def set_execution_options(self, qid):
         self.open_url(self.urlHandler.execution_options(qid))
@@ -602,7 +604,7 @@ class Add:
             Bar.open()
             self.send_basic(api, vpl, url)
             self.update_extra(api, vpl, item.id)
-            self.set_keep(api, item.id, vpl.keep_size)
+            self.set_keep(api, item.id, len(vpl.keep))
             Bar.done()
         elif item is not None and self.merge_mode == MergeMode.SKIP:
             print("    - Skipping: Label found in " + str(item.id) + ": " + item.title)
@@ -613,7 +615,7 @@ class Add:
             qid = self.send_basic(api, vpl, url)
             Bar.send(str(qid))
             self.update_extra(api, vpl, qid)
-            self.set_keep(api, qid, vpl.keep_size)
+            self.set_keep(api, qid, len(vpl.keep))
             self.structure.add_entry(self.section, qid, vpl.title)
             Bar.done()
 
