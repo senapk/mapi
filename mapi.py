@@ -658,6 +658,10 @@ class Update:
     @staticmethod
     def from_remote(item_list, duedate, structure):
         for item in item_list:
+            print("- Updating: " + str(item))
+            if item.label == "":
+                print("    - Skipping: No label found")
+                continue
             action = Add(item.section, duedate=duedate, source_mode=SourceMode.REMOTE, merge_mode=MergeMode.UPDATE,
                          structure=structure)
             action.add_target(item.label)

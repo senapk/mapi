@@ -12,6 +12,18 @@
 - apaga da pasta do moodle, tudo menos o Readme.md, as figuras
 
 
+mapi_cfg load -o .mapirc.json
+
+mapi_cfg setup
+            --markdown Readme.md    
+            --tests t.vpl
+            --required student.cpp  
+            --upload solver.cpp 
+            --keep lib.hpp lib.cpp main.cpp 
+            -o .mapirc.json
+         
+
+
 exemplos de código em c++
 
 main.cpp

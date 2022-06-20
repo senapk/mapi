@@ -65,7 +65,7 @@ Se não passar o parâmetro --password, a senha será perguntada em cada utiliza
 Agora basta dar um `mapi list` para listar o conteúdo do seu curso. Ou `./mapi.py list` dependendo de se ele está no seu path ou não.
 
 ### Modo personalizado
-Se 
+
 Você pode criar arquivos de configuração para diferentes cursos do moodle. Você pode criar um arquivo `curso.json` com o seguinte formato e valores.
 ```
 {
