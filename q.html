@@ -1,0 +1,263 @@
+<!DOCTYPE html>
+<html xmlns="http://www.w3.org/1999/xhtml" lang="" xml:lang="">
+<head>
+  <meta charset="utf-8" />
+  <meta name="generator" content="pandoc" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=yes" />
+  <title>&lt;\!--TOC_BEGIN--&gt;</title>
+  <style>
+    code{white-space: pre-wrap;}
+    span.smallcaps{font-variant: small-caps;}
+    span.underline{text-decoration: underline;}
+    div.column{display: inline-block; vertical-align: top; width: 50%;}
+    div.hanging-indent{margin-left: 1.5em; text-indent: -1.5em;}
+    ul.task-list{list-style: none;}
+    pre > code.sourceCode { white-space: pre; position: relative; }
+    pre > code.sourceCode > span { display: inline-block; line-height: 1.25; }
+    pre > code.sourceCode > span:empty { height: 1.2em; }
+    .sourceCode { overflow: visible; }
+    code.sourceCode > span { color: inherit; text-decoration: inherit; }
+    div.sourceCode { margin: 1em 0; }
+    pre.sourceCode { margin: 0; }
+    @media screen {
+    div.sourceCode { overflow: auto; }
+    }
+    @media print {
+    pre > code.sourceCode { white-space: pre-wrap; }
+    pre > code.sourceCode > span { text-indent: -5em; padding-left: 5em; }
+    }
+    pre.numberSource code
+      { counter-reset: source-line 0; }
+    pre.numberSource code > span
+      { position: relative; left: -4em; counter-increment: source-line; }
+    pre.numberSource code > span > a:first-child::before
+      { content: counter(source-line);
+        position: relative; left: -1em; text-align: right; vertical-align: baseline;
+        border: none; display: inline-block;
+        -webkit-touch-callout: none; -webkit-user-select: none;
+        -khtml-user-select: none; -moz-user-select: none;
+        -ms-user-select: none; user-select: none;
+        padding: 0 4px; width: 4em;
+        color: #aaaaaa;
+      }
+    pre.numberSource { margin-left: 3em; border-left: 1px solid #aaaaaa;  padding-left: 4px; }
+    div.sourceCode
+      {   }
+    @media screen {
+    pre > code.sourceCode > span > a:first-child::before { text-decoration: underline; }
+    }
+    code span.al { color: #ff0000; font-weight: bold; } /* Alert */
+    code span.an { color: #60a0b0; font-weight: bold; font-style: italic; } /* Annotation */
+    code span.at { color: #7d9029; } /* Attribute */
+    code span.bn { color: #40a070; } /* BaseN */
+    code span.bu { } /* BuiltIn */
+    code span.cf { color: #007020; font-weight: bold; } /* ControlFlow */
+    code span.ch { color: #4070a0; } /* Char */
+    code span.cn { color: #880000; } /* Constant */
+    code span.co { color: #60a0b0; font-style: italic; } /* Comment */
+    code span.cv { color: #60a0b0; font-weight: bold; font-style: italic; } /* CommentVar */
+    code span.do { color: #ba2121; font-style: italic; } /* Documentation */
+    code span.dt { color: #902000; } /* DataType */
+    code span.dv { color: #40a070; } /* DecVal */
+    code span.er { color: #ff0000; font-weight: bold; } /* Error */
+    code span.ex { } /* Extension */
+    code span.fl { color: #40a070; } /* Float */
+    code span.fu { color: #06287e; } /* Function */
+    code span.im { } /* Import */
+    code span.in { color: #60a0b0; font-weight: bold; font-style: italic; } /* Information */
+    code span.kw { color: #007020; font-weight: bold; } /* Keyword */
+    code span.op { color: #666666; } /* Operator */
+    code span.ot { color: #007020; } /* Other */
+    code span.pp { color: #bc7a00; } /* Preprocessor */
+    code span.sc { color: #4070a0; } /* SpecialChar */
+    code span.ss { color: #bb6688; } /* SpecialString */
+    code span.st { color: #4070a0; } /* String */
+    code span.va { color: #19177c; } /* Variable */
+    code span.vs { color: #4070a0; } /* VerbatimString */
+    code span.wa { color: #60a0b0; font-weight: bold; font-style: italic; } /* Warning */
+  </style>
+  <link rel="stylesheet" href="/tmp/tmpp4qf9jyn.css" />
+  <!--[if lt IE 9]>
+    <script src="//cdnjs.cloudflare.com/ajax/libs/html5shiv/3.7.3/html5shiv-printshiv.min.js"></script>
+  <![endif]-->
+</head>
+<body>
+<!--TOC_BEGIN-->
+<ul>
+<li><a href="#configurações-da-ferramenta">Configurações da
+ferramenta</a></li>
+<li><a href="#configurando-acesso-ao-curso">Configurando acesso ao
+curso</a></li>
+<li><a href="#listando-estrutura-de-um-curso">Listando estrutura de um
+curso</a></li>
+<li><a href="#adicionando">Adicionando</a>
+<ul>
+<li><a href="#utilizando-labels">Utilizando labels</a></li>
+<li><a href="#inserindo-questões-duplicadas">Inserindo questões
+duplicadas</a></li>
+<li><a href="#definindo-horário-de-finalizar-atividade">Definindo
+horário de finalizar atividade</a></li>
+</ul></li>
+<li><a href="#removendo">Removendo</a></li>
+<li><a href="#update">Update</a></li>
+<li><a href="#criando-suas-próprias-questões">Criando suas próprias
+questões</a> <!--TOC_END--></li>
+</ul>
+<h1 id="moodleapi">MoodleAPI</h1>
+<p>API de publicação automática de VPL’s no Moodle/Moodle2</p>
+<p>É necessário primeiro baixar as bibliotecas mechanicalsoup e bs4
+usando o pip</p>
+<h2 id="configurações-da-ferramenta">Configurações da ferramenta</h2>
+<p>Instale o python e o pip. Depois instale as dependências com</p>
+<pre><code>pip install mechanicalsoup bs4</code></pre>
+<p>baixe o arquivo <code>mapi.py</code>, coloque como executável, e
+adicione a algum lugar do seu path.</p>
+<p>Se não quiser adicionar diretamente no path, você terá que invocá-lo
+diretamente utilizando</p>
+<div class="sourceCode" id="cb2"><pre
+class="sourceCode bash"><code class="sourceCode bash"><span id="cb2-1"><a href="#cb2-1" aria-hidden="true" tabindex="-1"></a><span class="ex">$</span> python mapi.py</span>
+<span id="cb2-2"><a href="#cb2-2" aria-hidden="true" tabindex="-1"></a><span class="co">#ou</span></span>
+<span id="cb2-3"><a href="#cb2-3" aria-hidden="true" tabindex="-1"></a><span class="ex">$</span> chmod +x mapi.py</span>
+<span id="cb2-4"><a href="#cb2-4" aria-hidden="true" tabindex="-1"></a><span class="ex">$</span> ./mapi.py</span></code></pre></div>
+<p>Pode também incluir um alias no seu arquivo “.bashrc” ou “.zshrc”
+para chamar o script de qualquer lugar</p>
+<div class="sourceCode" id="cb3"><pre
+class="sourceCode bash"><code class="sourceCode bash"><span id="cb3-1"><a href="#cb3-1" aria-hidden="true" tabindex="-1"></a><span class="co">#arquivo .bashrc</span></span>
+<span id="cb3-2"><a href="#cb3-2" aria-hidden="true" tabindex="-1"></a><span class="bu">alias</span> mapi=<span class="st">&#39;/path/completo/para/mapi.py&#39;</span></span></code></pre></div>
+<p>pronto, agora basta invocar mapi de qualquer pasta. A partir de
+agora, vou me referir ao comando apenas como <code>mapi</code>. Para
+conferir a instalação, basta abrir o terminal e digitar
+<code>mapi -h</code>.</p>
+<h2 id="configurando-acesso-ao-curso">Configurando acesso ao curso</h2>
+<h3 id="modo-rápido">Modo rápido</h3>
+<p>Para criar o arquivo default com o acesso ao seu curso basta executar
+o seguinte comando no terminal, substituindo os valores de usuário,
+senha e número do curso do moodle. Os campos de url e remote já estão
+configurados para o curso de fup. Será criado um arquivo .mapirc na sua
+pasta home.</p>
+<div class="sourceCode" id="cb4"><pre
+class="sourceCode bash"><code class="sourceCode bash"><span id="cb4-1"><a href="#cb4-1" aria-hidden="true" tabindex="-1"></a><span class="ex">$</span> mapi setup <span class="at">--username</span> SEU_USUARIO <span class="at">--password</span> SUA_SENHA <span class="at">--course</span> O_NUMERO_DO_SEU_CURSO_DO_MOODLE <span class="dt">\</span></span>
+<span id="cb4-2"><a href="#cb4-2" aria-hidden="true" tabindex="-1"></a>--url https://moodle2.quixada.ufc.br <span class="at">--remote</span> https://raw.githubusercontent.com/qxcodefup/moodle/master/base</span></code></pre></div>
+<p>Para obter o número do curso, basta olhar o último número na URL do
+seu curso do moodle.</p>
+<p><img src="resources/curso.png" /></p>
+<p>Se não passar o parâmetro –password, a senha será perguntada em cada
+utilização.</p>
+<p>Agora basta dar um <code>mapi list</code> para listar o conteúdo do
+seu curso. Ou <code>./mapi.py list</code> dependendo de se ele está no
+seu path ou não.</p>
+<h3 id="modo-personalizado">Modo personalizado</h3>
+<p>Você pode criar arquivos de configuração para diferentes cursos do
+moodle. Você pode criar um arquivo <code>curso.json</code> com o
+seguinte formato e valores.</p>
+<pre><code>{
+    &quot;username&quot;: &quot;seu_login&quot;,
+    &quot;password&quot;: &quot;sua_senha&quot;,
+    &quot;course&quot;: &quot;numero_do_curso&quot;,
+    &quot;url&quot;: &quot;url_do_moodle&quot;,
+    &quot;remote&quot;: &quot;url do repositório remoto de questões&quot;
+}</code></pre>
+<p>Se estiver utilizando o moodle2 da UFC de Quixadá e for trabalhar com
+a disciplina FUP, seu arquivo será igual a esse, mudando apenas os três
+primeiros campos.</p>
+<pre><code>{
+    &quot;username&quot;: &quot;jiraya&quot;,
+    &quot;password&quot;: &quot;espadaOlimpica123&quot;,
+    &quot;course&quot;: &quot;516&quot;,
+    &quot;url&quot;: &quot;https://moodle2.quixada.ufc.br&quot;,
+    &quot;remote&quot;: &quot;https://raw.githubusercontent.com/qxcodefup/moodle/master/base&quot;
+}</code></pre>
+<p>Se preferir, pode deixar o campo password com valor null
+<code>"password": null</code>. O script vai perguntar sua senha em cada
+operação.</p>
+<p>Se não estiver utilizando o arquivo de configuração padrão, terá que
+passar seu curso sempre por parâmetro na invocação do script. Se tiver
+utilizando o alias, pode deixar o parâmetro fixo integrado no alias</p>
+<div class="sourceCode" id="cb7"><pre
+class="sourceCode bash"><code class="sourceCode bash"><span id="cb7-1"><a href="#cb7-1" aria-hidden="true" tabindex="-1"></a><span class="co">#arquivo .bashrc</span></span>
+<span id="cb7-2"><a href="#cb7-2" aria-hidden="true" tabindex="-1"></a><span class="bu">alias</span> mapi=<span class="st">&#39;/path/completo/para/mapi.py -c /path/completo/para/curso.json&#39;</span></span></code></pre></div>
+<h2 id="listando-estrutura-de-um-curso">Listando estrutura de um
+curso</h2>
+<p>Para saber se está funcionando, você pode listar as questões do seu
+curso. Você pode ter múltiplos arquivos de configuração, um para cada
+curso.</p>
+<pre><code>$ mapi -c curso.json list</code></pre>
+<p>Quando estiver povoado, a saída será como a da figura abaixo. <img
+src="resources/list.png" /></p>
+<p>Você pode salvar o arquivo de configuração no seu diretório
+<code>home</code> como <code>.mapirc</code> e será o arquivo carregado
+por default caso não seja explicitado outro arquivo.</p>
+<pre><code>$ mapi list</code></pre>
+<p>Para todo o resto do tutorial, vamos omitir o parâmetro do arquivo de
+configuração.</p>
+<h2 id="adicionando">Adicionando</h2>
+<h3 id="utilizando-labels">Utilizando labels</h3>
+<p>O procedimento padrão para inserção é utilizando as questões do
+repositório remoto configurado no arquivo de configurações. Para FUP, o
+repositório padrão está no <a
+href="https://github.com/qxcodefup/arcade#qxcodefup">github</a>. Depois,
+você vai aprender a criar e formatar as próprias questões. No
+repositório, cada questão tem um <code>label</code> único no formato de
+<code>@xxx</code>.</p>
+<p><img src="resources/exemplo.png" /></p>
+<p>Para enviar a questão <code>@192 A idade de Dona Mônica</code> para a
+seção 5 do seu curso do moodle use:</p>
+<div class="sourceCode" id="cb10"><pre
+class="sourceCode bash"><code class="sourceCode bash"><span id="cb10-1"><a href="#cb10-1" aria-hidden="true" tabindex="-1"></a><span class="ex">$</span> mapi add 195 <span class="at">--section</span> 5</span></code></pre></div>
+<p>Ou de forma resumida</p>
+<div class="sourceCode" id="cb11"><pre
+class="sourceCode bash"><code class="sourceCode bash"><span id="cb11-1"><a href="#cb11-1" aria-hidden="true" tabindex="-1"></a><span class="ex">$</span> mapi add 195 <span class="at">-s</span> 5</span></code></pre></div>
+<p>É possível enviar várias questões ao mesmo tempo com o mesmo comando.
+Para enviar 002, 003, 004 e 006 para a seção 5:</p>
+<pre><code>$ mapi add 002 003 004 006 -s 5</code></pre>
+<h3 id="inserindo-questões-duplicadas">Inserindo questões
+duplicadas</h3>
+<p>O procedimento default se você enviar duas questões com o mesmo label
+para a mesma seção, o procedimento padrão é de atualizar a questão
+pre-existente. Você pode forçar a inserção duplicada com
+<code>--force</code> ou pular a questão caso ela já exista com
+<code>--skip</code> para o comando <code>add</code>.</p>
+<h3 id="definindo-horário-de-finalizar-atividade">Definindo horário de
+finalizar atividade</h3>
+<p>Por default, as questões são inseridas sem prazo para fechamento da
+atividade. No caso de provas ou testes, você pode inserir questões
+definindo o horário de fechamento com o parâmetro
+<code>--duedate yyyy:m:d:h:m</code>.</p>
+<h2 id="removendo">Removendo</h2>
+<div class="sourceCode" id="cb13"><pre
+class="sourceCode bash"><code class="sourceCode bash"><span id="cb13-1"><a href="#cb13-1" aria-hidden="true" tabindex="-1"></a><span class="co"># para remover todos os vpls da seção 4</span></span>
+<span id="cb13-2"><a href="#cb13-2" aria-hidden="true" tabindex="-1"></a><span class="ex">$</span> mapi rm <span class="at">-s</span> 4</span>
+<span id="cb13-3"><a href="#cb13-3" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb13-4"><a href="#cb13-4" aria-hidden="true" tabindex="-1"></a><span class="co"># para remover as questões passando os IDS</span></span>
+<span id="cb13-5"><a href="#cb13-5" aria-hidden="true" tabindex="-1"></a><span class="ex">$</span> mapi rm <span class="at">-i</span> 19234 18234 19234</span>
+<span id="cb13-6"><a href="#cb13-6" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb13-7"><a href="#cb13-7" aria-hidden="true" tabindex="-1"></a><span class="co"># para remover TODOS os vpls do curso</span></span>
+<span id="cb13-8"><a href="#cb13-8" aria-hidden="true" tabindex="-1"></a><span class="ex">$</span> mapi rm <span class="at">--all</span></span></code></pre></div>
+<h2 id="update-rm-e-download">Update, Rm e Download</h2>
+<p>Update pode ser utilizado para - Habilitar as opções de execução das
+questões que você criou manualmente - Atualizar as questões utilizando o
+label e buscando no repositório por updates. - Atualizar a data de
+finalização da questão.</p>
+<p>Você pode solicitar atualização por label, índice ou para todos as
+questões de uma seção.</p>
+<div class="sourceCode" id="cb14"><pre
+class="sourceCode bash"><code class="sourceCode bash"><span id="cb14-1"><a href="#cb14-1" aria-hidden="true" tabindex="-1"></a><span class="co"># desabilitando a data de término (duedate) de todas as questões da seção 4 com -s ou --sections</span></span>
+<span id="cb14-2"><a href="#cb14-2" aria-hidden="true" tabindex="-1"></a><span class="ex">$</span> mapi update <span class="at">-s</span> 4 <span class="at">--duedate</span> 0</span>
+<span id="cb14-3"><a href="#cb14-3" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb14-4"><a href="#cb14-4" aria-hidden="true" tabindex="-1"></a><span class="co"># colocando um duedate específico yyyy:m:d:h:m da questão de label @023 com -l ou --labels</span></span>
+<span id="cb14-5"><a href="#cb14-5" aria-hidden="true" tabindex="-1"></a><span class="ex">$</span> mapi update <span class="at">-l</span> 023 <span class="at">--duedate</span> 2021:5:28:11:30</span>
+<span id="cb14-6"><a href="#cb14-6" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb14-7"><a href="#cb14-7" aria-hidden="true" tabindex="-1"></a><span class="co"># habilitando as opções de execução para todas as questões do cursos</span></span>
+<span id="cb14-8"><a href="#cb14-8" aria-hidden="true" tabindex="-1"></a><span class="ex">$</span> mapi update <span class="at">--all</span> <span class="at">--exec-options</span></span>
+<span id="cb14-9"><a href="#cb14-9" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb14-10"><a href="#cb14-10" aria-hidden="true" tabindex="-1"></a><span class="co"># atualizando todas as suas questões por label utilizando a versão mais atual do servidor remoto</span></span>
+<span id="cb14-11"><a href="#cb14-11" aria-hidden="true" tabindex="-1"></a><span class="ex">$</span> mapi update <span class="at">--all</span> <span class="at">--remote</span></span></code></pre></div>
+<h2 id="removendo-e-baixando.">Removendo e Baixando.</h2>
+<p>Remover utiliza os mesmos parâmetros -l (labels), -s (sections),
+-a(all), -i(ids).</p>
+<p>O comando de download baixa a questão do moodle para seu computador
+num formato que permite alteração e reenvio ao moodle.</p>
+<p>Para reinserir uma questão baixada do moodle, basta utilizar o
+parâmetro –local no add.</p>
+</body>
+</html>

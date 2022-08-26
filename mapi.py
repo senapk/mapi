@@ -216,7 +216,7 @@ class JsonVplLoader:
     def load(target: str, source_mode: SourceMode) -> JsonVPL:
         if source_mode == SourceMode.REMOTE:
             remote_url = Credentials.load_credentials().remote
-            url = os.path.join(remote_url, target + "/mapi.json")
+            url = os.path.join(remote_url, target + "/.cache/mapi.json")
             print("    - Loading from remote")
             response = requests.get(url, allow_redirects=True)
             if response.text != "404: Not Found":
@@ -537,7 +537,7 @@ class Add:
     def __init__(self, section: Optional[int], duedate: Optional[str], source_mode: SourceMode, merge_mode: MergeMode,
                  structure=None):
         self.section: Optional[int] = 0 if section is None else section
-        self.duedate = duedate
+        self.duedate = "0" if duedate is None else duedate
         self.source_mode = source_mode
         self.merge_mode = merge_mode
         if structure is None:
@@ -725,12 +725,16 @@ class Actions:
     def update(args):
         args_exec_options = args.exec_options
         args_duedate = args.duedate
-        args_remote = args.remote
+        args_info = args.info
+
+        if (not args.exec_options and not args.duedate and not args.info):
+            print("no action (-i(info), -d(duedate), -e(exec_options)) selected")
+            return
 
         structure = StructureLoader.load()
         item_list = Update.load_itens(args.all, args.sections, args.ids, args.labels, structure)
 
-        if args_remote:
+        if args_info:
             Update.from_remote(item_list, args_duedate, structure)
 
         if args_exec_options or args_duedate:
@@ -808,8 +812,8 @@ def main():
     selection_group.add_argument('-s', '--sections', metavar='SECTION', nargs='*', type=int, help="")
 
     p_duedate = argparse.ArgumentParser(add_help=False)
-    p_duedate.add_argument('-d', '--duedate', type=str, default=None, action='store', 
-                           help='duedate = 0 to disable or duedate yyyy:m:d:h:m')
+    p_duedate.add_argument('-d', '--duedate', type=str, action='store', 
+                           help='duedate 0 to disable or duedate yyyy:m:d:h:m')
 
     p_out = argparse.ArgumentParser(add_help=False)
     p_out.add_argument('-o', '--output', type=str, default='.', action='store', help='Output directory')
@@ -845,7 +849,7 @@ def main():
     parser_down.set_defaults(func=Actions.down)
 
     parser_update = subparsers.add_parser('update', parents=[p_selection, p_duedate], help='Update vpls')
-    parser_update.add_argument('-r', '--remote', action='store_true', help="update by label using remote")
+    parser_update.add_argument('-i', '--info', action='store_true', help="update question info")
     parser_update.add_argument('-e', '--exec-options', action='store_true', help="enable all execution options")
     parser_update.set_defaults(func=Actions.update)
 
