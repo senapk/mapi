@@ -725,16 +725,16 @@ class Actions:
     def update(args):
         args_exec_options = args.exec_options
         args_duedate = args.duedate
-        args_info = args.info
+        args_content = args.content
 
-        if (not args.exec_options and not args.duedate and not args.info):
-            print("no action (-i(info), -d(duedate), -e(exec_options)) selected")
+        if (not args.exec_options and not args.duedate and not args.content):
+            print("no action (-c(content), -d(duedate), -e(exec_options)) selected")
             return
 
         structure = StructureLoader.load()
         item_list = Update.load_itens(args.all, args.sections, args.ids, args.labels, structure)
 
-        if args_info:
+        if args_content:
             Update.from_remote(item_list, args_duedate, structure)
 
         if args_exec_options or args_duedate:
@@ -849,7 +849,7 @@ def main():
     parser_down.set_defaults(func=Actions.down)
 
     parser_update = subparsers.add_parser('update', parents=[p_selection, p_duedate], help='Update vpls')
-    parser_update.add_argument('-i', '--info', action='store_true', help="update question info")
+    parser_update.add_argument('-c', '--content', action='store_true', help="update question content")
     parser_update.add_argument('-e', '--exec-options', action='store_true', help="enable all execution options")
     parser_update.set_defaults(func=Actions.update)
 
