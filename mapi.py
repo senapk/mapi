@@ -10,6 +10,9 @@ import sys
 import getpass  # get pass
 import pathlib
 import requests
+import urllib.request
+import urllib.error
+import tempfile
 from enum import Enum
 
 
@@ -79,6 +82,10 @@ class URLHandler:
     @staticmethod
     def parse_id(url) -> str:
         return url.split("id=")[1].split("&")[0]
+
+    @staticmethod
+    def parse_id_from_update(url) -> str:
+        return url.split("update=")[1]
 
     @staticmethod
     def is_vpl_url(url) -> bool:
@@ -211,21 +218,25 @@ class JsonVplLoader:
             vpl.required.append(JsonFile(f["name"], f["contents"]))
         return vpl
 
+    @staticmethod
+    def save_as(file_url, filename) -> bool:
+        try:
+            urllib.request.urlretrieve(file_url, filename)
+        except urllib.error.HTTPError:
+            return False
+        return True
+
     # remote is like https://raw.githubusercontent.com/qxcodefup/moodle/master/base/
     @staticmethod
     def load(target: str, source_mode: SourceMode) -> JsonVPL:
         if source_mode == SourceMode.REMOTE:
             remote_url = Credentials.load_credentials().remote
-            url = os.path.join(remote_url, target + "/.cache/mapi.json")
-            print("    - Loading from remote")
-            response = requests.get(url, allow_redirects=True)
-            if response.text != "404: Not Found":
-                return JsonVplLoader._load_from_string(response.text)
-        if os.path.isdir(target):
-            target = os.path.join(target, "mapi.json")
-        if os.path.isfile(target):
-            with open(target, encoding='utf-8') as f:
-                return JsonVplLoader._load_from_string(f.read())
+            url = os.path.join(remote_url, target + "/.cache/mapi.json")            
+            _fd, path = tempfile.mkstemp(suffix = "_" + target + '.json')
+            print("    - Loading from remote in"    + path + " ... ", end = "")
+            if JsonVplLoader.save_as(url, path):
+                print("done")
+                return JsonVplLoader._load_from_string(open(path).read())
         print("fail: invalid target " + target)
         exit(1)
 
@@ -265,7 +276,7 @@ class StructureItem:
     def parse_label(title) -> str:
         ttl_splt = title.strip().split(" ")
         for ttl in ttl_splt:
-            if ttl[0] == '@':
+            if len(ttl) > 0 and ttl[0] == '@':
                 return ttl[1:]
         return ""
 
@@ -487,10 +498,15 @@ class MoodleAPI:
         self.browser['name'] = vpl.title
         self.browser['introeditor[text]'] = vpl.description
         self.set_duedate_field_in_form(duedate)
-        self.browser['maxfiles'] = max(len(vpl.keep), 1)
+        self.browser['maxfiles'] = max(len(vpl.keep), 3)
         self.browser.form.choose_submit("submitbutton")
         self.browser.submit_selected()
-        qid = URLHandler.parse_id(self.browser.get_url())
+
+        if url.find("update") != -1:
+            qid = URLHandler.parse_id_from_update(url)
+        else:
+            url2 = self.browser.get_url()
+            qid = URLHandler.parse_id(url2)
         return int(qid)
 
     def _send_vpl_files(self, url: str, vpl_files: List[JsonFile]):
@@ -702,7 +718,7 @@ class Actions:
         elif args.duplicate:
             merge_mode = MergeMode.DUPLICATE
         
-        source_mode = SourceMode.LOCAL if args.local else SourceMode.REMOTE
+        source_mode = SourceMode.REMOTE
         action = Add(args.section, args.duedate, source_mode, merge_mode)
         for target in args.targets:
             action.add_target(target)
@@ -830,7 +846,6 @@ def main():
 
     parser_add = subparsers.add_parser('add', parents=[p_section, p_duedate], help="add")
     parser_add.add_argument('targets', type=str, nargs='+', action='store', help='file, folder ou remote with lab')
-    parser_add.add_argument('-l', '--local', action='store_true', help="Use local json instead remote repository")
 
     group_add = parser_add.add_mutually_exclusive_group()
     group_add.add_argument('--update', action='store_true', help="Default: update if label conflict")
